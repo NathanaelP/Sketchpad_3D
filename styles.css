@@ -311,3 +311,5 @@ html, body {
     padding-left: 0;
   }
 }
+
+#viewport-canvas.tool-freehand { cursor: crosshair; }
