@@ -1,7 +1,8 @@
 import { initViewport, getScene, getCamera, getRenderer, startRenderLoop } from './viewport.js';
 import { createDefaultPlane, getActivePlane, getAllPlanes, setPlaneVisibility, setLinesVisible } from './planes.js';
-import { initDrawing, setActiveTool, undoLast, setPlaneStrokesVisible } from './drawing.js';
+import { initDrawing, setActiveTool, undoLast, setPlaneStrokesVisible, getStrokes, restoreStroke } from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
+import { save, load } from './storage.js';
 
 window.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('viewport-canvas');
@@ -13,11 +14,23 @@ window.addEventListener('DOMContentLoaded', () => {
   // 2. Default sketch plane
   createDefaultPlane(scene);
 
-  // 3. Drawing system
-  initDrawing(scene, getCamera(), getRenderer(), getActivePlane);
+  // 3. Save callback — called after every mutation
+  const saveCb = () => save(getAllPlanes(), getStrokes());
+
+  // 4. Drawing system
+  initDrawing(scene, getCamera(), getRenderer(), getActivePlane, saveCb);
   setActiveTool('line'); // start in line mode
 
-  // 4. UI: toolbar, panel, plane list
+  // 5. Restore previous session
+  const saved = load();
+  if (saved?.strokes?.length) {
+    const plane = getActivePlane();
+    if (plane) {
+      saved.strokes.forEach(strokeData => restoreStroke(strokeData, plane));
+    }
+  }
+
+  // 6. UI: toolbar, panel, plane list
   initUI(
     { getAllPlanes, setPlaneVisibility },
     (tool) => setActiveTool(tool),
@@ -28,10 +41,10 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   );
 
-  // 5. Render loop — must start last
+  // 7. Render loop — must start last
   startRenderLoop();
 
-  // 6. Service worker registration
+  // 8. Service worker registration
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/service-worker.js').catch(() => {
