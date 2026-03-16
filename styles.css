@@ -110,7 +110,8 @@ html, body {
 }
 
 #undo-btn,
-#menu-btn {
+#menu-btn,
+#snap-btn {
   background: transparent;
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
@@ -126,10 +127,20 @@ html, body {
 }
 
 #undo-btn:hover,
-#menu-btn:hover {
+#menu-btn:hover,
+#snap-btn:hover {
   color: var(--text-primary);
   border-color: rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.06);
+}
+
+#snap-btn.active {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+#snap-btn:not(.active) {
+  opacity: 0.45;
 }
 
 /* ── Side Panel ── */

@@ -44,6 +44,16 @@ const strokes   = [];
 const history   = [];
 const MAX_HISTORY = 50;
 
+let snapEnabled = true;
+
+// Snap helpers — return null when snapping is disabled
+function snapEndpoint(sx, sy) {
+  return snapEnabled ? findEndpointSnap(sx, sy, strokes, SNAP_RADIUS_PX, camera, renderer) : null;
+}
+function snapLine(sx, sy) {
+  return snapEnabled ? findLineSnap(sx, sy, strokes, SNAP_RADIUS_PX, camera, renderer) : null;
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 export function initDrawing(sceneRef, cameraRef, rendererRef, getActivePlane, saveCallback) {
   scene            = sceneRef;
@@ -78,8 +88,8 @@ function onPointerDown(e) {
     const plane = getActivePlaneFn();
     if (!plane || !plane.meshRef) return;
 
-    // Snap start point to a nearby endpoint if within radius
-    const snap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    // Snap start point — endpoint priority, line snap fallback
+    const snap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
     const pt   = snap ? snap.point : (() => {
       const p = getPlaneIntersection(e, plane.meshRef);
       return p ? { x: p.x, y: p.y, z: p.z } : null;
@@ -114,8 +124,8 @@ function onPointerMove(e) {
     rawPoints3D.push({ x: pt.x, y: pt.y, z: pt.z });
     updatePreviewLine(freehandPreviewLine, rawPoints3D);
 
-    // Show snap ring when approaching an endpoint
-    const snap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    // Show snap ring when approaching an endpoint or line
+    const snap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
     if (snap) showSnapIndicator(snap.point, plane.normal);
     else      hideSnapIndicator();
 
@@ -123,7 +133,7 @@ function onPointerMove(e) {
     // Show snap ring for the upcoming second tap
     const plane = getActivePlaneFn();
     if (!plane) return;
-    const snap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    const snap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
     if (snap) showSnapIndicator(snap.point, plane.normal);
     else      hideSnapIndicator();
 
@@ -134,7 +144,7 @@ function onPointerMove(e) {
     // Show snap ring while hovering before the first point is placed
     const plane = getActivePlaneFn();
     if (!plane) return;
-    const snap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    const snap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
     if (snap) showSnapIndicator(snap.point, plane.normal);
     else      hideSnapIndicator();
   }
@@ -161,8 +171,7 @@ function onPointerUp(e) {
     }
 
     // Snap end point (endpoint priority, line snap fallback)
-    const endSnap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer)
-                 ?? findLineSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    const endSnap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
     if (endSnap) rawPoints3D[rawPoints3D.length - 1] = { ...endSnap.point };
 
     const plane = getActivePlaneFn();
@@ -182,7 +191,7 @@ function handleLineTap(e) {
   if (!plane || !plane.meshRef) return;
 
   if (drawState === STATE_IDLE) {
-    const snap  = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    const snap  = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
     const point = snap
       ? new THREE.Vector3(snap.point.x, snap.point.y, snap.point.z)
       : getPlaneIntersection(e, plane.meshRef);
@@ -196,8 +205,7 @@ function handleLineTap(e) {
 
   } else if (drawState === STATE_AWAITING_SECOND) {
     // Endpoint snap first, line snap as fallback
-    const snap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer)
-              ?? findLineSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    const snap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
     const point = snap
       ? new THREE.Vector3(snap.point.x, snap.point.y, snap.point.z)
       : getPlaneIntersection(e, plane.meshRef);
@@ -560,6 +568,15 @@ export function undoLast() {
     regenerateStrokeGeometry(stroke);
     saveCb?.();
   }
+}
+
+export function setSnapEnabled(enabled) {
+  snapEnabled = enabled;
+  if (!enabled) hideSnapIndicator();
+}
+
+export function isSnapEnabled() {
+  return snapEnabled;
 }
 
 export function setActiveTool(toolName) {

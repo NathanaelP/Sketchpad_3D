@@ -1,6 +1,6 @@
 import { initViewport, getScene, getCamera, getRenderer, startRenderLoop } from './viewport.js';
 import { createDefaultPlane, getActivePlane, getAllPlanes, setPlaneVisibility, setLinesVisible } from './planes.js';
-import { initDrawing, setActiveTool, undoLast, setPlaneStrokesVisible, getStrokes, restoreStroke } from './drawing.js';
+import { initDrawing, setActiveTool, undoLast, setPlaneStrokesVisible, getStrokes, restoreStroke, setSnapEnabled, isSnapEnabled } from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
 import { save, load } from './storage.js';
 
@@ -41,10 +41,21 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   );
 
-  // 7. Render loop — must start last
+  // 7. Snap toggle button
+  const snapBtn = document.getElementById('snap-btn');
+  if (snapBtn) {
+    snapBtn.addEventListener('click', () => {
+      const nowEnabled = !isSnapEnabled();
+      setSnapEnabled(nowEnabled);
+      snapBtn.classList.toggle('active', nowEnabled);
+      snapBtn.title = nowEnabled ? 'Snapping on — click to disable' : 'Snapping off — click to enable';
+    });
+  }
+
+  // 8. Render loop — must start last
   startRenderLoop();
 
-  // 8. Service worker registration
+  // 9. Service worker registration
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/service-worker.js').catch(() => {
