@@ -30,7 +30,8 @@ export function initViewport(canvasElement) {
   controls.dampingFactor = 0.08;
   controls.minDistance = 1;
   controls.maxDistance = 50;
-  controls.enablePan = false;
+  controls.enablePan = true;
+  controls.panSpeed = 0.8;
   controls.touches.ONE = THREE.TOUCH.ROTATE;
   controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
 

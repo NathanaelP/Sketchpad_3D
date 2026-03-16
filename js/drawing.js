@@ -170,6 +170,12 @@ export function setActiveTool(toolName) {
   if (toolName !== 'line') cancelCurrentStroke();
 }
 
+export function setPlaneStrokesVisible(planeId, visible) {
+  strokes
+    .filter(s => s.planeId === planeId)
+    .forEach(s => { if (s.threeObject) s.threeObject.visible = visible; });
+}
+
 export function getStrokes() {
   return strokes;
 }

@@ -1,6 +1,6 @@
 import { initViewport, getScene, getCamera, getRenderer, startRenderLoop } from './viewport.js';
-import { createDefaultPlane, getActivePlane, getAllPlanes, setPlaneVisibility } from './planes.js';
-import { initDrawing, setActiveTool, undoLast } from './drawing.js';
+import { createDefaultPlane, getActivePlane, getAllPlanes, setPlaneVisibility, setLinesVisible } from './planes.js';
+import { initDrawing, setActiveTool, undoLast, setPlaneStrokesVisible } from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -21,7 +21,11 @@ window.addEventListener('DOMContentLoaded', () => {
   initUI(
     { getAllPlanes, setPlaneVisibility },
     (tool) => setActiveTool(tool),
-    () => undoLast()
+    () => undoLast(),
+    (planeId, visible) => {
+      setPlaneStrokesVisible(planeId, visible);
+      setLinesVisible(planeId, visible);
+    }
   );
 
   // 5. Render loop — must start last

@@ -51,6 +51,7 @@ export function createDefaultPlane(scene) {
     name: 'Front',
     color: PLANE_COLORS[0],
     visible: true,
+    linesVisible: true,
     active: true,
     normal: { x: 0, y: 0, z: 1 },
     position: { x: 0, y: 0, z: 0 },
@@ -75,4 +76,9 @@ export function setPlaneVisibility(planeId, visible) {
   if (!plane) return;
   plane.visible = visible;
   if (plane.threeObject) plane.threeObject.visible = visible;
+}
+
+export function setLinesVisible(planeId, visible) {
+  const plane = planes.find(p => p.id === planeId);
+  if (plane) plane.linesVisible = visible;
 }
