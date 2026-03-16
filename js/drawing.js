@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { simplifyPoints, catmullRomCurve } from './curves.js';
 import { getControls } from './viewport.js';
+import { findEndpointSnap, findLineSnap } from './snap.js';
 
 // ─── State constants ──────────────────────────────────────────────────────────
 const STATE_IDLE              = 'IDLE';
@@ -9,8 +10,9 @@ const STATE_FREEHAND_DRAWING  = 'FREEHAND_DRAWING';
 const SELECT_IDLE             = 'SELECT_IDLE';
 const SELECT_HANDLE_DRAGGING  = 'SELECT_HANDLE_DRAGGING';
 
-const TAP_MOVE_THRESHOLD = 12; // px — travel beyond this = orbit, not tap
+const TAP_MOVE_THRESHOLD     = 12;   // px — travel beyond this = orbit, not tap
 const LINE_RAYCAST_THRESHOLD = 0.15; // world units
+const SNAP_RADIUS_PX         = 24;   // touch-friendly snap radius
 
 // ─── Module state ─────────────────────────────────────────────────────────────
 let scene, camera, renderer, getActivePlaneFn;
@@ -19,18 +21,23 @@ let activeTool = 'line';
 let drawState  = STATE_IDLE;
 
 // Line tool
-let startPoint    = null; // THREE.Vector3
-let startMarker   = null; // THREE.Mesh sphere shown at first tap
-let pointerDownPos = null;
+let startPoint      = null; // THREE.Vector3
+let startMarker     = null; // THREE.Mesh sphere shown at first tap
+let startSnapTarget = null; // {point, strokeId} | null — snap recorded at first tap
+let pointerDownPos  = null;
 
 // Freehand tool
-let rawPoints3D        = [];
+let rawPoints3D       = [];
 let freehandPreviewLine = null;
-let activePointerId    = null;
+let activePointerId   = null;
+let freehandStartSnap = null; // {point, strokeId} | null — snap at freehand start
 
 // Select tool
 let selectedStroke = null;
 let dragState      = null; // { stroke, pointIndex, handleMesh, oldPoint }
+
+// Snap indicator
+let snapIndicatorMesh = null; // THREE.Mesh — lazy-created, reused
 
 const raycaster = new THREE.Raycaster();
 const strokes   = [];
@@ -71,16 +78,23 @@ function onPointerDown(e) {
     const plane = getActivePlaneFn();
     if (!plane || !plane.meshRef) return;
 
-    const pt = getPlaneIntersection(e, plane.meshRef);
+    // Snap start point to a nearby endpoint if within radius
+    const snap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    const pt   = snap ? snap.point : (() => {
+      const p = getPlaneIntersection(e, plane.meshRef);
+      return p ? { x: p.x, y: p.y, z: p.z } : null;
+    })();
     if (!pt) return;
 
-    activePointerId = e.pointerId;
+    freehandStartSnap = snap;
+    activePointerId   = e.pointerId;
     renderer.domElement.setPointerCapture(e.pointerId);
-    rawPoints3D = [{ x: pt.x, y: pt.y, z: pt.z }];
+    rawPoints3D = [{ ...pt }];
     drawState   = STATE_FREEHAND_DRAWING;
 
     freehandPreviewLine = createPreviewLine([pt], plane.color);
     scene.add(freehandPreviewLine);
+    hideSnapIndicator();
 
   } else if (activeTool === 'select') {
     handleSelectPointerDown(e);
@@ -99,6 +113,19 @@ function onPointerMove(e) {
 
     rawPoints3D.push({ x: pt.x, y: pt.y, z: pt.z });
     updatePreviewLine(freehandPreviewLine, rawPoints3D);
+
+    // Show snap ring when approaching an endpoint
+    const snap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    if (snap) showSnapIndicator(snap.point, plane.normal);
+    else      hideSnapIndicator();
+
+  } else if (activeTool === 'line' && drawState === STATE_AWAITING_SECOND) {
+    // Show snap ring for the upcoming second tap
+    const plane = getActivePlaneFn();
+    if (!plane) return;
+    const snap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    if (snap) showSnapIndicator(snap.point, plane.normal);
+    else      hideSnapIndicator();
 
   } else if (activeTool === 'select' && drawState === SELECT_HANDLE_DRAGGING) {
     handleSelectDrag(e);
@@ -120,12 +147,20 @@ function onPointerUp(e) {
     if (e.pointerId !== activePointerId) return;
 
     if (rawPoints3D.length < 3) {
+      freehandStartSnap = null;
       cancelFreehand();
       return;
     }
 
+    // Snap end point (endpoint priority, line snap fallback)
+    const endSnap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer)
+                 ?? findLineSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    if (endSnap) rawPoints3D[rawPoints3D.length - 1] = { ...endSnap.point };
+
     const plane = getActivePlaneFn();
-    if (plane) commitFreehand(rawPoints3D, plane);
+    if (plane) commitFreehand(rawPoints3D, plane, freehandStartSnap, endSnap);
+    freehandStartSnap = null;
+    hideSnapIndicator();
     cancelFreehand();
 
   } else if (activeTool === 'select') {
@@ -138,20 +173,36 @@ function handleLineTap(e) {
   const plane = getActivePlaneFn();
   if (!plane || !plane.meshRef) return;
 
-  const point = getPlaneIntersection(e, plane.meshRef);
-  if (!point) return;
-
   if (drawState === STATE_IDLE) {
-    startPoint = point.clone();
+    const snap  = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    const point = snap
+      ? new THREE.Vector3(snap.point.x, snap.point.y, snap.point.z)
+      : getPlaneIntersection(e, plane.meshRef);
+    if (!point) return;
+
+    startPoint      = point instanceof THREE.Vector3 ? point : point.clone();
+    startSnapTarget = snap;
     placeStartMarker(startPoint, plane.color);
+    hideSnapIndicator();
     drawState = STATE_AWAITING_SECOND;
+
   } else if (drawState === STATE_AWAITING_SECOND) {
-    commitLine(startPoint, point, plane);
+    // Endpoint snap first, line snap as fallback
+    const snap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer)
+              ?? findLineSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    const point = snap
+      ? new THREE.Vector3(snap.point.x, snap.point.y, snap.point.z)
+      : getPlaneIntersection(e, plane.meshRef);
+    if (!point) return;
+
+    commitLine(startPoint, point, plane, startSnapTarget, snap);
+    startSnapTarget = null;
+    hideSnapIndicator();
     cancelCurrentStroke();
   }
 }
 
-function commitLine(p1, p2, plane) {
+function commitLine(p1, p2, plane, startSnap, endSnap) {
   const controlPoints = [
     { x: p1.x, y: p1.y, z: p1.z },
     { x: p2.x, y: p2.y, z: p2.z },
@@ -180,6 +231,7 @@ function commitLine(p1, p2, plane) {
   };
 
   handleGroup.children.forEach(mesh => { mesh.userData.strokeId = stroke.id; });
+  _applySnapConnections(stroke, startSnap, endSnap);
 
   strokes.push(stroke);
   pushHistory({ action: 'add_stroke', strokeId: stroke.id });
@@ -193,7 +245,7 @@ function cancelCurrentStroke() {
 }
 
 // ─── Freehand tool ────────────────────────────────────────────────────────────
-function commitFreehand(rawPoints, plane) {
+function commitFreehand(rawPoints, plane, startSnap, endSnap) {
   const controlPoints = simplifyPoints(rawPoints, 0.05);
   if (controlPoints.length < 2) return;
 
@@ -220,6 +272,7 @@ function commitFreehand(rawPoints, plane) {
   };
 
   handleGroup.children.forEach(mesh => { mesh.userData.strokeId = stroke.id; });
+  _applySnapConnections(stroke, startSnap, endSnap);
 
   strokes.push(stroke);
   pushHistory({ action: 'add_stroke', strokeId: stroke.id });
@@ -236,6 +289,43 @@ function cancelFreehand() {
   rawPoints3D     = [];
   activePointerId = null;
   if (drawState === STATE_FREEHAND_DRAWING) drawState = STATE_IDLE;
+}
+
+// ─── Snap connections ─────────────────────────────────────────────────────────
+function _applySnapConnections(newStroke, startSnap, endSnap) {
+  for (const snap of [startSnap, endSnap]) {
+    if (!snap) continue;
+    const target = strokes.find(s => s.id === snap.strokeId);
+    if (!target) continue;
+    if (!newStroke.snapConnections.includes(snap.strokeId))
+      newStroke.snapConnections.push(snap.strokeId);
+    if (!target.snapConnections.includes(newStroke.id))
+      target.snapConnections.push(newStroke.id);
+  }
+}
+
+// ─── Snap indicator ───────────────────────────────────────────────────────────
+function showSnapIndicator(point, planeNormal) {
+  if (!snapIndicatorMesh) {
+    const geo = new THREE.RingGeometry(0.15, 0.22, 24);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9,
+    });
+    snapIndicatorMesh = new THREE.Mesh(geo, mat);
+    scene.add(snapIndicatorMesh);
+  }
+  const normal = new THREE.Vector3(planeNormal.x, planeNormal.y, planeNormal.z).normalize();
+  snapIndicatorMesh.position.set(point.x, point.y, point.z);
+  snapIndicatorMesh.position.addScaledVector(normal, 0.02); // prevent z-fighting
+  snapIndicatorMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+  snapIndicatorMesh.visible = true;
+}
+
+function hideSnapIndicator() {
+  if (snapIndicatorMesh) snapIndicatorMesh.visible = false;
 }
 
 // ─── Select tool ──────────────────────────────────────────────────────────────
@@ -437,6 +527,12 @@ export function undoLast() {
       mesh.material.dispose();
     });
 
+    // Remove this stroke from others' snapConnections
+    stroke.snapConnections.forEach(otherId => {
+      const other = strokes.find(s => s.id === otherId);
+      if (other) other.snapConnections = other.snapConnections.filter(id => id !== stroke.id);
+    });
+
     strokes.splice(idx, 1);
     saveCb?.();
 
@@ -469,6 +565,9 @@ export function setActiveTool(toolName) {
   } else {
     drawState = STATE_IDLE;
   }
+
+  // Always hide snap indicator when switching tools
+  hideSnapIndicator();
 
   // Disable orbit controls while freehand is active so drags draw, not orbit
   const controls = getControls();
