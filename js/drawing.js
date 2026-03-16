@@ -129,6 +129,14 @@ function onPointerMove(e) {
 
   } else if (activeTool === 'select' && drawState === SELECT_HANDLE_DRAGGING) {
     handleSelectDrag(e);
+
+  } else if ((activeTool === 'line' || activeTool === 'freehand') && drawState === STATE_IDLE) {
+    // Show snap ring while hovering before the first point is placed
+    const plane = getActivePlaneFn();
+    if (!plane) return;
+    const snap = findEndpointSnap(e.clientX, e.clientY, strokes, SNAP_RADIUS_PX, camera, renderer);
+    if (snap) showSnapIndicator(snap.point, plane.normal);
+    else      hideSnapIndicator();
   }
 }
 
@@ -352,6 +360,7 @@ function handleSelectPointerDown(e) {
       };
       drawState = SELECT_HANDLE_DRAGGING;
       renderer.domElement.setPointerCapture(e.pointerId);
+      getControls().enabled = false;
       return;
     }
   }
@@ -394,6 +403,7 @@ function handleSelectPointerUp(e) {
     saveCb?.();
   }
 
+  getControls().enabled = true;
   dragState = null;
   drawState = SELECT_IDLE;
 
