@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sketch3d-v2';
+const CACHE_NAME = 'sketch3d-v3';
 
 const PRECACHE_URLS = [
   '/',
