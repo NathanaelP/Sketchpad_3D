@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1a1a2e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Sketch3D</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- es-module-shims must come before importmap for Safari compatibility -->
+  <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <!-- Hammer.js as regular script (not an ES module) -->
+  <script src="https://unpkg.com/hammerjs@2.0.8/hammer.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div id="toolbar">
+      <span class="app-name">Sketch3D</span>
+      <div class="toolbar-center">
+        <span id="active-tool-label">Line</span>
+        <div class="tool-group">
+          <button class="tool-btn" data-tool="select">Select</button>
+          <button class="tool-btn active" data-tool="line">Line</button>
+        </div>
+      </div>
+      <div class="toolbar-right">
+        <button id="undo-btn" title="Undo (Ctrl+Z)">&#x21A9;</button>
+        <button id="menu-btn" title="Toggle panel">&#9776;</button>
+      </div>
+    </div>
+
+    <div id="side-panel">
+      <div id="panel-header">Planes</div>
+      <div id="plane-list"></div>
+      <div id="panel-footer">
+        <button id="add-plane-btn">+ Add Plane</button>
+      </div>
+    </div>
+    <div id="panel-tab" title="Toggle panel">&#9664;</div>
+
+    <canvas id="viewport-canvas"></canvas>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
