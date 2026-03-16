@@ -1,14 +1,16 @@
 let onToolChangeCb = null;
 let onUndoCb = null;
+let onLinesVisibilityToggleCb = null;
 let planesAPI = null;
 
 // Track desktop panel open state separately
 let desktopPanelOpen = true;
 
-export function initUI(planes, onToolChange, onUndo) {
+export function initUI(planes, onToolChange, onUndo, onLinesVisibilityToggle) {
   planesAPI    = planes;
   onToolChangeCb = onToolChange;
   onUndoCb       = onUndo;
+  onLinesVisibilityToggleCb = onLinesVisibilityToggle || null;
 
   setupToolButtons();
   setupUndoButton();
@@ -98,21 +100,36 @@ function renderPlaneRow(plane) {
   name.className = 'plane-name';
   name.textContent = plane.name;
 
+  // Grid visibility toggle (eye icon)
   const visBtn = document.createElement('button');
   visBtn.className = 'vis-btn' + (plane.visible ? '' : ' hidden');
-  visBtn.title = 'Toggle visibility';
+  visBtn.title = 'Toggle grid visibility';
   visBtn.innerHTML = '&#128065;'; // 👁
   visBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (planesAPI && planesAPI.setPlaneVisibility) {
       planesAPI.setPlaneVisibility(plane.id, !plane.visible);
-      plane.visible = !plane.visible;
+      // plane.visible is updated by setPlaneVisibility — read it back rather than toggling here
       visBtn.classList.toggle('hidden', !plane.visible);
+    }
+  });
+
+  // Lines visibility toggle (pencil icon)
+  const linesBtn = document.createElement('button');
+  linesBtn.className = 'vis-btn' + (plane.linesVisible ? '' : ' hidden');
+  linesBtn.title = 'Toggle lines visibility';
+  linesBtn.innerHTML = '&#9998;'; // ✎
+  linesBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (onLinesVisibilityToggleCb) {
+      onLinesVisibilityToggleCb(plane.id, !plane.linesVisible);
+      linesBtn.classList.toggle('hidden', !plane.linesVisible);
     }
   });
 
   row.appendChild(dot);
   row.appendChild(name);
+  row.appendChild(linesBtn);
   row.appendChild(visBtn);
 
   return row;
