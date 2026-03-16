@@ -50,6 +50,7 @@ export function initViewport(canvasElement) {
 export function getScene() { return scene; }
 export function getCamera() { return camera; }
 export function getRenderer() { return renderer; }
+export function getControls() { return controls; }
 
 export function startRenderLoop() {
   function loop() {
