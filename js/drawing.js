@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { simplifyPoints, catmullRomCurve } from './curves.js';
+import { getControls } from './viewport.js';
 
 // ─── State constants ──────────────────────────────────────────────────────────
 const STATE_IDLE              = 'IDLE';
@@ -468,6 +469,10 @@ export function setActiveTool(toolName) {
   } else {
     drawState = STATE_IDLE;
   }
+
+  // Disable orbit controls while freehand is active so drags draw, not orbit
+  const controls = getControls();
+  if (controls) controls.enabled = (toolName !== 'freehand');
 
   // CSS cursor hint
   if (renderer) {
