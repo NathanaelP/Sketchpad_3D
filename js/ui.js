@@ -1,18 +1,20 @@
-let onToolChangeCb           = null;
-let onUndoCb                 = null;
+let onToolChangeCb            = null;
+let onUndoCb                  = null;
 let onLinesVisibilityToggleCb = null;
-let planesAPI                = null;
+let onDeletePlaneCb           = null;
+let planesAPI                 = null;
 
 // Track desktop panel open state separately
 let desktopPanelOpen = true;
 
 // planes API shape:
-//   { getAllPlanes, setPlaneVisibility, addPlane, setActivePlane, renamePlane }
-export function initUI(planes, onToolChange, onUndo, onLinesVisibilityToggle) {
+//   { getAllPlanes, setPlaneVisibility, addPlane, setActivePlane, renamePlane, deletePlane }
+export function initUI(planes, onToolChange, onUndo, onLinesVisibilityToggle, onDeletePlane) {
   planesAPI              = planes;
   onToolChangeCb         = onToolChange;
   onUndoCb               = onUndo;
   onLinesVisibilityToggleCb = onLinesVisibilityToggle || null;
+  onDeletePlaneCb        = onDeletePlane || null;
 
   setupToolButtons();
   setupUndoButton();
@@ -118,10 +120,11 @@ export function updatePlaneList(planes) {
   const list = document.getElementById('plane-list');
   if (!list) return;
   list.innerHTML = '';
-  planes.forEach(plane => list.appendChild(renderPlaneRow(plane)));
+  const canDelete = planes.length > 1;
+  planes.forEach(plane => list.appendChild(renderPlaneRow(plane, canDelete)));
 }
 
-function renderPlaneRow(plane) {
+function renderPlaneRow(plane, canDelete) {
   const row = document.createElement('div');
   row.className = 'plane-row' + (plane.active ? ' active' : '');
   row.dataset.planeId = plane.id;
@@ -180,6 +183,19 @@ function renderPlaneRow(plane) {
   row.appendChild(name);
   row.appendChild(linesBtn);
   row.appendChild(visBtn);
+
+  // Delete button — only shown when more than one plane exists
+  if (canDelete) {
+    const delBtn = document.createElement('button');
+    delBtn.className = 'vis-btn del-btn';
+    delBtn.title     = 'Delete plane and its strokes';
+    delBtn.innerHTML = '&#x1F5D1;'; // 🗑
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (onDeletePlaneCb) onDeletePlaneCb(plane.id);
+    });
+    row.appendChild(delBtn);
+  }
 
   return row;
 }

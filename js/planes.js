@@ -168,3 +168,24 @@ export function renamePlane(planeId, newName) {
   const plane = planes.find(p => p.id === planeId);
   if (plane) plane.name = newName;
 }
+
+export function deletePlane(planeId) {
+  if (planes.length <= 1) return; // never delete the last plane
+  const idx = planes.findIndex(p => p.id === planeId);
+  if (idx === -1) return;
+  const plane = planes[idx];
+
+  // Remove Three.js objects and dispose
+  if (plane.threeObject) {
+    sceneRef.remove(plane.threeObject);
+    plane.threeObject.traverse(child => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    });
+  }
+
+  planes.splice(idx, 1);
+
+  // If we removed the active plane, activate the first remaining one
+  if (plane.active && planes.length > 0) planes[0].active = true;
+}

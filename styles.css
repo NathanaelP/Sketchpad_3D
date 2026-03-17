@@ -176,6 +176,38 @@ html, body {
   flex-shrink: 0;
 }
 
+/* ── Line width control ── */
+#line-width-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.lw-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+#line-width-slider {
+  flex: 1;
+  accent-color: var(--accent-blue);
+  cursor: pointer;
+}
+
+#line-width-value {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 28px;
+  text-align: right;
+}
+
+/* ── Plane list ── */
 #plane-list {
   flex: 1;
   overflow-y: auto;
@@ -232,6 +264,11 @@ html, body {
 
 .vis-btn.hidden {
   opacity: 0.25;
+}
+
+.del-btn:hover {
+  color: #ef5350 !important;
+  opacity: 1 !important;
 }
 
 #panel-footer {
