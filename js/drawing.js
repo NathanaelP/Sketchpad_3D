@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { Line2 }        from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { simplifyPoints, catmullRomCurve } from './curves.js';
 import { getControls } from './viewport.js';
 import { findEndpointSnap, findLineSnap } from './snap.js';
@@ -47,6 +50,7 @@ const history   = [];
 const MAX_HISTORY = 50;
 
 let snapEnabled = true;
+let lineWidth   = 3; // px — applied to all new and existing strokes
 
 // Snap helpers — return null when snapping is disabled
 function snapEndpoint(sx, sy) {
@@ -396,8 +400,7 @@ function handleSelectPointerDown(e) {
     }
   }
 
-  // 2. Try line geometries
-  raycaster.params.Line = { threshold: LINE_RAYCAST_THRESHOLD };
+  // 2. Try line geometries (Line2 uses pixel-space threshold based on linewidth)
   const allLineRefs = strokes.map(s => s.lineRef).filter(Boolean);
   const lineHits    = raycaster.intersectObjects(allLineRefs);
   if (lineHits.length > 0) {
@@ -463,10 +466,15 @@ function deselectAll() {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function buildLineObject(controlPoints, color) {
   const splinePoints = catmullRomCurve(controlPoints, 20);
-  const vectors      = splinePoints.map(p => new THREE.Vector3(p.x, p.y, p.z));
-  const geo          = new THREE.BufferGeometry().setFromPoints(vectors);
-  const mat          = new THREE.LineBasicMaterial({ color: new THREE.Color(color) });
-  return new THREE.Line(geo, mat);
+  const positions    = splinePoints.flatMap(p => [p.x, p.y, p.z]);
+  const geo          = new LineGeometry();
+  geo.setPositions(positions);
+  const mat = new LineMaterial({
+    color:      new THREE.Color(color),
+    linewidth:  lineWidth,
+    resolution: new THREE.Vector2(renderer.domElement.clientWidth, renderer.domElement.clientHeight),
+  });
+  return new Line2(geo, mat);
 }
 
 function buildHandleGroup(controlPoints, color) {
@@ -488,9 +496,9 @@ function buildHandleGroup(controlPoints, color) {
 
 function regenerateStrokeGeometry(stroke) {
   const splinePoints = catmullRomCurve(stroke.points, 20);
-  const vectors      = splinePoints.map(p => new THREE.Vector3(p.x, p.y, p.z));
-  stroke.lineRef.geometry.setFromPoints(vectors);
-  stroke.lineRef.geometry.attributes.position.needsUpdate = true;
+  const positions    = splinePoints.flatMap(p => [p.x, p.y, p.z]);
+  stroke.lineRef.geometry.setPositions(positions);
+  stroke.lineRef.computeLineDistances();
 }
 
 function createPreviewLine(points, color) {
@@ -529,8 +537,19 @@ function getPlaneIntersection(event, planeMesh) {
   const ndcX   =  ((event.clientX - rect.left) / rect.width)  * 2 - 1;
   const ndcY   = -((event.clientY - rect.top)  / rect.height) * 2 + 1;
   raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+
+  // Try finite mesh first (respects plane bounds)
   const hits = raycaster.intersectObject(planeMesh);
-  return hits.length > 0 ? hits[0].point : null;
+  if (hits.length > 0) return hits[0].point;
+
+  // Fallback: infinite plane so drawing works at any camera angle.
+  // Derive world-space normal and position from the mesh's current transform.
+  const worldNormal   = new THREE.Vector3(0, 0, 1)
+    .applyQuaternion(planeMesh.getWorldQuaternion(new THREE.Quaternion()));
+  const worldPos      = planeMesh.getWorldPosition(new THREE.Vector3());
+  const infinitePlane = new THREE.Plane().setFromNormalAndCoplanarPoint(worldNormal, worldPos);
+  const target        = new THREE.Vector3();
+  return raycaster.ray.intersectPlane(infinitePlane, target);
 }
 
 function setNDC(event) {
@@ -601,6 +620,42 @@ export function setSnapEnabled(enabled) {
 
 export function isSnapEnabled() {
   return snapEnabled;
+}
+
+export function setLineWidth(w) {
+  lineWidth = Math.max(1, Math.min(20, w));
+  // Update all existing stroke materials
+  strokes.forEach(s => {
+    if (s.lineRef?.material) {
+      s.lineRef.material.linewidth = lineWidth;
+      s.lineRef.material.needsUpdate = true;
+    }
+  });
+}
+
+export function getLineWidth() {
+  return lineWidth;
+}
+
+export function deleteStrokesByPlane(planeId) {
+  const toDelete = strokes.filter(s => s.planeId === planeId);
+  toDelete.forEach(stroke => {
+    if (stroke.selected) deselectAll();
+    scene.remove(stroke.threeObject);
+    stroke.lineRef.geometry.dispose();
+    stroke.lineRef.material.dispose();
+    stroke.handleGroupRef.children.forEach(m => { m.geometry.dispose(); m.material.dispose(); });
+    // Remove from other strokes' snapConnections
+    stroke.snapConnections.forEach(otherId => {
+      const other = strokes.find(s => s.id === otherId);
+      if (other) other.snapConnections = other.snapConnections.filter(id => id !== stroke.id);
+    });
+  });
+  // Remove from strokes array
+  const deleteIds = new Set(toDelete.map(s => s.id));
+  strokes.splice(0, strokes.length, ...strokes.filter(s => !deleteIds.has(s.id)));
+  // Remove history entries that reference deleted strokes
+  history.splice(0, history.length, ...history.filter(e => !deleteIds.has(e.strokeId)));
 }
 
 export function setActiveTool(toolName) {

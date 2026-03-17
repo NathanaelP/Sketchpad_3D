@@ -4,12 +4,14 @@ import {
   getActivePlane, getAllPlanes,
   setPlaneVisibility, setLinesVisible,
   setActivePlane, renamePlane,
-  restorePlane,
+  restorePlane, deletePlane,
 } from './planes.js';
 import {
   initDrawing, setActiveTool, undoLast,
   setPlaneStrokesVisible, getStrokes, restoreStroke,
   setSnapEnabled, isSnapEnabled,
+  setLineWidth, getLineWidth,
+  deleteStrokesByPlane,
 } from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
 import { save, load } from './storage.js';
@@ -78,8 +80,26 @@ window.addEventListener('DOMContentLoaded', () => {
       setPlaneStrokesVisible(planeId, visible);
       setLinesVisible(planeId, visible);
       saveCb();
+    },
+    (planeId) => {
+      deleteStrokesByPlane(planeId);
+      deletePlane(planeId);
+      updatePlaneList(getAllPlanes());
+      saveCb();
     }
   );
+
+  // 7b. Line width slider
+  const lwSlider = document.getElementById('line-width-slider');
+  const lwValue  = document.getElementById('line-width-value');
+  if (lwSlider) {
+    lwSlider.value = getLineWidth();
+    lwSlider.addEventListener('input', () => {
+      const w = parseInt(lwSlider.value, 10);
+      setLineWidth(w);
+      if (lwValue) lwValue.textContent = `${w}px`;
+    });
+  }
 
   // 8. Snap toggle button
   const snapBtn = document.getElementById('snap-btn');
