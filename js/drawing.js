@@ -13,7 +13,7 @@ const SELECT_HANDLE_DRAGGING  = 'SELECT_HANDLE_DRAGGING';
 
 const TAP_MOVE_THRESHOLD     = 12;   // px — travel beyond this = orbit, not tap
 const LINE_RAYCAST_THRESHOLD = 0.15; // world units
-const SNAP_RADIUS_PX         = 24;   // touch-friendly snap radius
+const SNAP_RADIUS_PX         = 36;   // touch-friendly snap radius (was 24)
 
 // ─── Module state ─────────────────────────────────────────────────────────────
 let scene, camera, renderer, getActivePlaneFn;
@@ -22,10 +22,11 @@ let activeTool = 'line';
 let drawState  = STATE_IDLE;
 
 // Line tool
-let startPoint      = null; // THREE.Vector3
-let startMarker     = null; // THREE.Mesh sphere shown at first tap
-let startSnapTarget = null; // {point, strokeId} | null — snap recorded at first tap
-let pointerDownPos  = null;
+let startPoint           = null; // THREE.Vector3
+let startMarker          = null; // THREE.Mesh sphere shown at first tap
+let startSnapTarget      = null; // {point, strokeId} | null — snap recorded at first tap
+let pointerDownPos       = null;
+let pendingLineStartSnap = null; // snap candidate captured at pointerdown (more reliable than pointerup on mobile)
 
 // Freehand tool
 let rawPoints3D       = [];
@@ -80,7 +81,9 @@ export function initDrawing(sceneRef, cameraRef, rendererRef, getActivePlane, sa
 // ─── Pointer handlers ─────────────────────────────────────────────────────────
 function onPointerDown(e) {
   if (activeTool === 'line') {
-    pointerDownPos = { x: e.clientX, y: e.clientY };
+    pointerDownPos       = { x: e.clientX, y: e.clientY };
+    // Capture snap at exact touch-down — lift position can be 8-15 px off on mobile
+    pendingLineStartSnap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
     renderer.domElement.setPointerCapture(e.pointerId);
 
   } else if (activeTool === 'freehand') {
@@ -172,8 +175,24 @@ function onPointerUp(e) {
     }
 
     // Snap end point (endpoint priority, line snap fallback)
-    const endSnap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
-    if (endSnap) rawPoints3D[rawPoints3D.length - 1] = { ...endSnap.point };
+    let endSnap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
+    if (endSnap) {
+      rawPoints3D[rawPoints3D.length - 1] = { ...endSnap.point };
+    } else if (rawPoints3D.length > 3) {
+      // Allow snapping end to the start of this same stroke to close a loop.
+      // The current stroke isn't in strokes[] yet, so we project its start point manually.
+      const sp     = rawPoints3D[0];
+      const canvas = renderer.domElement;
+      const rect   = canvas.getBoundingClientRect();
+      const v      = new THREE.Vector3(sp.x, sp.y, sp.z).project(camera);
+      if (v.z <= 1) {
+        const px = (v.x *  0.5 + 0.5) * canvas.clientWidth  + rect.left;
+        const py = (v.y * -0.5 + 0.5) * canvas.clientHeight + rect.top;
+        if (Math.hypot(e.clientX - px, e.clientY - py) < SNAP_RADIUS_PX) {
+          rawPoints3D[rawPoints3D.length - 1] = { ...sp };
+        }
+      }
+    }
 
     const plane = getActivePlaneFn();
     if (plane) commitFreehand(rawPoints3D, plane, freehandStartSnap, endSnap);
@@ -192,7 +211,9 @@ function handleLineTap(e) {
   if (!plane || !plane.meshRef) return;
 
   if (drawState === STATE_IDLE) {
-    const snap  = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
+    // Prefer snap captured at pointerdown; fall back to pointerup coords
+    const snap  = pendingLineStartSnap ?? snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
+    pendingLineStartSnap = null;
     const point = snap
       ? new THREE.Vector3(snap.point.x, snap.point.y, snap.point.z)
       : getPlaneIntersection(e, plane.meshRef);
@@ -257,8 +278,9 @@ function commitLine(p1, p2, plane, startSnap, endSnap) {
 
 function cancelCurrentStroke() {
   removeStartMarker();
-  startPoint = null;
-  drawState  = STATE_IDLE;
+  startPoint           = null;
+  pendingLineStartSnap = null;
+  drawState            = STATE_IDLE;
 }
 
 // ─── Freehand tool ────────────────────────────────────────────────────────────
