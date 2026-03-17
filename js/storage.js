@@ -10,6 +10,7 @@ export function save(planes, strokes) {
       visible:      p.visible,
       linesVisible: p.linesVisible,
       active:       p.active,
+      orientation:  p.orientation || 'front',
       normal:       { ...p.normal },
       position:     { ...p.position },
     })),

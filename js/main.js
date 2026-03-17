@@ -1,6 +1,16 @@
 import { initViewport, getScene, getCamera, getRenderer, startRenderLoop } from './viewport.js';
-import { createDefaultPlane, getActivePlane, getAllPlanes, setPlaneVisibility, setLinesVisible } from './planes.js';
-import { initDrawing, setActiveTool, undoLast, setPlaneStrokesVisible, getStrokes, restoreStroke, setSnapEnabled, isSnapEnabled } from './drawing.js';
+import {
+  initPlanes, createDefaultPlane, addPlane,
+  getActivePlane, getAllPlanes,
+  setPlaneVisibility, setLinesVisible,
+  setActivePlane, renamePlane,
+  restorePlane,
+} from './planes.js';
+import {
+  initDrawing, setActiveTool, undoLast,
+  setPlaneStrokesVisible, getStrokes, restoreStroke,
+  setSnapEnabled, isSnapEnabled,
+} from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
 import { save, load } from './storage.js';
 
@@ -11,37 +21,67 @@ window.addEventListener('DOMContentLoaded', () => {
   initViewport(canvas);
   const scene = getScene();
 
-  // 2. Default sketch plane
-  createDefaultPlane(scene);
+  // 2. Init plane system (must come before any plane creation)
+  initPlanes(scene);
 
-  // 3. Save callback — called after every mutation
-  const saveCb = () => save(getAllPlanes(), getStrokes());
-
-  // 4. Drawing system
-  initDrawing(scene, getCamera(), getRenderer(), getActivePlane, saveCb);
-  setActiveTool('line'); // start in line mode
-
-  // 5. Restore previous session
+  // 3. Restore saved session or create defaults
   const saved = load();
-  if (saved?.strokes?.length) {
-    const plane = getActivePlane();
-    if (plane) {
-      saved.strokes.forEach(strokeData => restoreStroke(strokeData, plane));
+
+  if (saved?.planes?.length) {
+    saved.planes.forEach(p => restorePlane(p));
+    // Ensure at least one plane is marked active
+    if (!getAllPlanes().some(p => p.active)) {
+      const first = getAllPlanes()[0];
+      if (first) first.active = true;
     }
+  } else {
+    createDefaultPlane();
   }
 
-  // 6. UI: toolbar, panel, plane list
+  // 4. Save callback — called after every mutation
+  const saveCb = () => save(getAllPlanes(), getStrokes());
+
+  // 5. Drawing system
+  initDrawing(scene, getCamera(), getRenderer(), getActivePlane, saveCb);
+  setActiveTool('line');
+
+  // 6. Restore saved strokes (each stroke knows its planeId via strokeData)
+  if (saved?.strokes?.length) {
+    saved.strokes.forEach(strokeData => restoreStroke(strokeData));
+    // Re-apply lines visibility from saved plane state
+    getAllPlanes().forEach(plane => {
+      if (!plane.linesVisible) setPlaneStrokesVisible(plane.id, false);
+    });
+  }
+
+  // 7. UI: toolbar, panel, plane list
   initUI(
-    { getAllPlanes, setPlaneVisibility },
+    {
+      getAllPlanes,
+      setPlaneVisibility,
+      addPlane: (orientation) => {
+        addPlane(orientation);
+        saveCb();
+      },
+      setActivePlane: (id) => {
+        setActivePlane(id);
+        saveCb();
+      },
+      renamePlane: (id, name) => {
+        renamePlane(id, name);
+        saveCb();
+      },
+    },
     (tool) => setActiveTool(tool),
     () => undoLast(),
     (planeId, visible) => {
       setPlaneStrokesVisible(planeId, visible);
       setLinesVisible(planeId, visible);
+      saveCb();
     }
   );
 
-  // 7. Snap toggle button
+  // 8. Snap toggle button
   const snapBtn = document.getElementById('snap-btn');
   if (snapBtn) {
     snapBtn.addEventListener('click', () => {
@@ -52,10 +92,10 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 8. Render loop — must start last
+  // 9. Render loop — must start last
   startRenderLoop();
 
-  // 9. Service worker registration
+  // 10. Service worker registration
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/service-worker.js').catch(() => {
