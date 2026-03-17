@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { simplifyPoints, catmullRomCurve } from './curves.js';
 import { getControls } from './viewport.js';
 import { findEndpointSnap, findLineSnap } from './snap.js';
+import { getPlaneById } from './planes.js';
 
 // ─── State constants ──────────────────────────────────────────────────────────
 const STATE_IDLE              = 'IDLE';
@@ -388,7 +389,8 @@ function handleSelectPointerDown(e) {
 
 function handleSelectDrag(e) {
   if (!dragState) return;
-  const plane = getActivePlaneFn();
+  // Use the stroke's own plane for intersection so handles move along the correct surface
+  const plane = getPlaneById(dragState.stroke.planeId) || getActivePlaneFn();
   if (!plane || !plane.meshRef) return;
 
   const pt = getPlaneIntersection(e, plane.meshRef);
@@ -618,7 +620,7 @@ export function getStrokes() {
 }
 
 // Reconstruct Three.js objects from saved plain data (called on load, no history/saveCb).
-export function restoreStroke(strokeData, plane) {
+export function restoreStroke(strokeData) {
   const lineObj     = buildLineObject(strokeData.points, strokeData.color);
   const handleGroup = buildHandleGroup(strokeData.points, strokeData.color);
   handleGroup.visible = false;
