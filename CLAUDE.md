@@ -20,6 +20,7 @@ Primary test device: Samsung S25 Ultra (Chrome on Android).
 
 - Vanilla HTML5, CSS3, JavaScript (ES6 modules)
 - Three.js (loaded from CDN) — 3D viewport, scene, camera, rendering
+- Three.js addons: `Line2`, `LineMaterial`, `LineGeometry` — thick line rendering
 - Hammer.js (loaded from CDN) — unified touch and gesture handling
 - No build tools, no frameworks, no npm required for runtime
 - Hosted on GitHub Pages as a PWA (installable to home screen)
@@ -43,7 +44,7 @@ Primary test device: Samsung S25 Ultra (Chrome on Android).
 │   ├── main.js             ← App entry point, initialization, wires modules together
 │   ├── viewport.js         ← Three.js scene, camera, renderer, orbit controls
 │   ├── planes.js           ← Sketch plane creation, management, color assignment
-│   ├── drawing.js          ← Line drawing modes (point-to-point, freehand)
+│   ├── drawing.js          ← Line drawing modes (point-to-point, freehand, erase)
 │   ├── curves.js           ← Bezier/Catmull-Rom spline math, control point logic
 │   ├── snap.js             ← Snap detection (endpoint snap, line snap)
 │   ├── ui.js               ← Side panel, plane list, toolbar, UI interactions
@@ -68,24 +69,31 @@ When modifying behavior, identify the correct file first before editing.
 - Three.js OrbitControls handles camera navigation
 
 ### Toolbar (top bar, always visible)
-- App name / logo left side
-- Active tool indicator (Select, Line, Freehand)
-- Tool toggle buttons
-- Undo button
-- Menu/hamburger button to open side panel on mobile
+- App name / logo left side (hidden on mobile screens ≤599px CSS width)
+- Active tool indicator — hidden on mobile to save space
+- Tool toggle buttons: **Select**, **Line**, **Free**, **Erase**
+- Snap toggle button (🧲) — toggles snapping on/off, glows blue when active
+- Undo button (↩)
+- Menu/hamburger button to open side panel
+
+**Mobile responsive**: On screens ≤599px, non-essential elements are hidden and buttons
+are compacted so all 4 tool buttons + 3 icon buttons fit without horizontal overflow.
 
 ### Side Panel (collapsible, slides in from left)
 - Collapsed by default on mobile — a visible tab or arrow stays on screen
-- Expands to show plane management list
-- Each plane row shows:
+- Open by default on desktop (≥900px)
+- Line width slider (1–12px) at top of panel
+- Plane management list below:
   - Color swatch dot
-  - Plane name (editable on tap)
-  - Visibility toggle (eye icon)
-  - Active indicator (highlighted when selected)
+  - Plane name (tap to rename inline)
+  - Lines visibility toggle (✎ pencil icon)
+  - Grid visibility toggle (👁 eye icon)
+  - Delete button (🗑 trash icon) — shown only when >1 plane exists
+  - Active plane highlighted
   - Tap row to make that plane active drawing surface
 - Bottom of panel:
-  - "+ Add Plane" button
-  - Orientation picker on add: Front, Top, Right, Custom
+  - "+ Add Plane" button → reveals orientation picker
+  - Orientation picker: Front, Top, Right
 - Panel overlays the canvas on mobile, pushes canvas on desktop
 
 ### Color Theme
@@ -109,11 +117,11 @@ Default plane colors (assign in order as planes are added):
 5. Purple (#AB47BC)
 6. Teal (#26C6DA)
 
-Default orientation presets:
-- Front — faces the camera on Z axis (XY plane)
-- Top — horizontal, XZ plane
-- Right — faces right, YZ plane
-- Custom — user sets angle manually (Phase 4)
+Orientation presets (implemented):
+- **Front** — faces the camera on Z axis (XY plane, group rotation: none)
+- **Top** — horizontal, XZ plane (group rotationX: -π/2)
+- **Right** — faces right, YZ plane (group rotationY: π/2)
+- Custom — user sets angle manually (future Phase)
 
 Planes are stored as objects:
 ```javascript
@@ -121,22 +129,43 @@ Planes are stored as objects:
   id: "plane_001",
   name: "Front",
   color: "#4FC3F7",
-  visible: true,
+  visible: true,       // grid + mesh visibility
+  linesVisible: true,  // strokes on this plane visibility
   active: false,
-  normal: { x: 0, y: 0, z: 1 },   // plane orientation
-  position: { x: 0, y: 0, z: 0 }, // plane center in 3D space
-  threeObject: null                 // reference to Three.js mesh
+  orientation: "front",             // "front" | "top" | "right"
+  normal: { x: 0, y: 0, z: 1 },    // derived from orientation preset
+  position: { x: 0, y: 0, z: 0 },  // plane center in 3D space
+  threeObject: null,   // THREE.Group (mesh + grid)
+  meshRef: null        // THREE.Mesh inside the group (raycaster target)
 }
 ```
+
+### Plane Intersection — Infinite Plane Fallback
+When the camera is nearly edge-on to a plane (e.g. Top or Right planes viewed from
+certain angles), the finite 10×10 mesh may not be hit by raycasting.
+`getPlaneIntersection()` in drawing.js first tries to hit the finite mesh; if that
+misses, it falls back to `raycaster.ray.intersectPlane(THREE.Plane)` using the world
+normal derived via `getWorldQuaternion`. This ensures you can always draw on any plane.
 
 ---
 
 ## Drawing System
 
 ### Tool Modes
-- **Select** — tap/click strokes to select them, drag control points to reshape
-- **Line** — tap to place start point, tap to place end point, draws straight line
-- **Freehand** — drag finger continuously, captures path as raw points
+- **Select** — tap/click strokes to select them, drag control points to reshape.
+  Delete/Backspace key deletes the selected stroke.
+- **Line** — tap to place start point, tap to place end point, draws straight line.
+  Start point snaps at pointerdown (not pointerup) for mobile reliability.
+- **Free** (Freehand) — drag finger continuously, captures path as raw points.
+  Freehand loop closure: if end point is within snap radius of start, snaps closed.
+- **Erase** — tap any stroke to delete it immediately. Not undoable. Drag to orbit
+  (drag is not treated as erase — only taps shorter than TAP_MOVE_THRESHOLD delete).
+
+### Line Rendering — Line2 / LineMaterial
+WebGL ignores `LineBasicMaterial.linewidth` on all platforms except macOS.
+All strokes are rendered using `Line2` + `LineMaterial` + `LineGeometry` from
+`three/addons/lines/` which implement thick lines via a screen-space geometry technique.
+Line width is adjustable per-session via the side panel slider (1–12px, default 3px).
 
 ### Freehand to Spline Conversion
 When a freehand stroke ends:
@@ -156,7 +185,7 @@ directly through each control point, which feels natural and intuitive.
   planeId: "plane_001",
   type: "freehand",           // or "line"
   color: "#4FC3F7",           // inherited from plane
-  points: [                   // Catmull-Rom control points
+  points: [                   // Catmull-Rom control points (world space)
     { x: 0, y: 0, z: 0 },
     { x: 1, y: 2, z: 0 },
     { x: 3, y: 1.5, z: 0 },
@@ -169,25 +198,37 @@ directly through each control point, which feels natural and intuitive.
 
 ## Snap System
 
-Snap radius: 24px (touch-friendly, accounts for finger imprecision)
+Snap radius: **36px** (increased from 24px for fingertip comfort on high-DPI mobile)
+
+### Snap Toggle
+A 🧲 button in the toolbar enables/disables snapping globally. State is reflected
+visually (blue glow = on, dimmed = off). Default: on.
 
 ### Snap on Start
-- As user begins a stroke (touches down), check proximity to existing endpoints
-- If within snap radius, lock start point to that endpoint
-- Show visual indicator (bright dot or ring) on the snap target
+- At **pointerdown** (not pointerup), check proximity to existing endpoints and lines
+- Capture the snap candidate in `pendingLineStartSnap`
+- When the tap is confirmed at pointerup, use `pendingLineStartSnap` as the start point
+- Capturing at pointerdown is critical on mobile: the finger may drift 8–15px between
+  press and release, so lift position is unreliable for snap detection
 
 ### Snap on End
-- As user lifts finger to end a stroke, check proximity to existing endpoints and lines
+- At pointerup (stroke end), check proximity to existing endpoints and lines
 - If within snap radius, snap end point to target
 - Update snapConnections on both strokes
 
+### Freehand Loop Closure
+- At freehand pointerup, project `rawPoints3D[0]` (first raw point) to screen space
+- If end pointer is within snap radius of that screen projection, snap end to start
+- This closes the shape cleanly when the user draws a closed loop
+
 ### Visual Feedback
 - Highlight nearest snappable point with a glowing ring while drawing
-- Snap lock confirmed with a subtle color flash
+- Snap radius may need tuning — 36px is the current value (set `SNAP_RADIUS_PX` in drawing.js)
 
 ### Proximity Detection
-- Use Three.js raycasting for 3D point proximity
+- Snap functions in snap.js operate on world-space coordinates (all planes work)
 - Project 3D points to screen space for pixel-distance snap radius check
+- `Line2` raycasting uses the built-in `raycast()` method (no `raycaster.params.Line` override)
 
 ---
 
@@ -200,18 +241,26 @@ In Select mode:
 - Drag a handle to reshape the curve
 - Drag a non-handle part of the stroke to move the whole stroke
 - Selected stroke highlights in white or bright yellow
+- Press Delete or Backspace to delete the selected stroke
 
 Control point handles render as small circles on top of the stroke line.
 Handle size: 12px radius (touch-friendly).
+
+When dragging a handle on a stroke that belongs to a non-active plane, the intersection
+is computed against that stroke's own plane (via `getPlaneById(stroke.planeId)`), not
+the currently active plane.
 
 ---
 
 ## Undo System
 
 Maintain an action history stack (max 50 actions).
-Actions: add stroke, delete stroke, move control point, add plane, delete plane.
+Actions: add stroke, move control point.
 Undo button in toolbar steps back one action at a time.
 Keyboard shortcut: Ctrl+Z on desktop.
+
+**Note:** Erase tool deletions are **not** undoable by design (simpler UX).
+Plane deletion is also not in the undo stack.
 
 ---
 
@@ -221,12 +270,15 @@ Keyboard shortcut: Ctrl+Z on desktop.
 Serialize all planes and strokes to localStorage on every change.
 Key: `sketchpad_autosave`
 
+Saved plane data includes the `orientation` field. Old saves without this field are
+handled by `normalToOrientation(normal)` which infers it from the stored normal vector.
+
 ### Export
-"Export JSON" button saves the full sketch as a .json file download.
+"Export JSON" button saves the full sketch as a .json file download (Phase 5).
 "Export SVG" button (Phase 5) flattens visible strokes to a 2D SVG.
 
 ### Import
-"Import JSON" loads a previously exported sketch file.
+"Import JSON" loads a previously exported sketch file (Phase 5).
 
 ---
 
@@ -237,66 +289,77 @@ Each phase should result in something testable on a real device before moving on
 
 ---
 
-### Phase 1 — Foundation (Start Here)
+### Phase 1 — Foundation ✅ COMPLETE
 **Goal:** Working 3D viewport with one plane and basic straight line drawing.
 
-- [ ] Set up file structure (all files, empty/stubbed)
-- [ ] index.html loads Three.js and Hammer.js from CDN
-- [ ] viewport.js: Three.js scene, perspective camera, WebGL renderer, orbit controls
-- [ ] planes.js: Create one default Front plane with visible grid
-- [ ] drawing.js: Point-to-point line tool (tap start, tap end, draw line on plane)
-- [ ] ui.js: Minimal toolbar with tool toggle (Select / Line)
-- [ ] Collapsible side panel with one plane listed
-- [ ] Lines render in plane color
-- [ ] Camera orbit works with one finger drag
-- [ ] Pinch to zoom works
-- [ ] Runs correctly on mobile Chrome (test on S25 Ultra)
+- [x] Set up file structure (all files, empty/stubbed)
+- [x] index.html loads Three.js and Hammer.js from CDN
+- [x] viewport.js: Three.js scene, perspective camera, WebGL renderer, orbit controls
+- [x] planes.js: Create one default Front plane with visible grid
+- [x] drawing.js: Point-to-point line tool (tap start, tap end, draw line on plane)
+- [x] ui.js: Minimal toolbar with tool toggle (Select / Line)
+- [x] Collapsible side panel with one plane listed
+- [x] Lines render in plane color
+- [x] Camera orbit works with one finger drag
+- [x] Pinch to zoom works
+- [x] Runs correctly on mobile Chrome (test on S25 Ultra)
 
 ---
 
-### Phase 2 — Freehand Drawing and Curves
+### Phase 2 — Freehand Drawing and Curves ✅ COMPLETE
 **Goal:** Draw freehand strokes that convert to editable splines.
 
-- [ ] drawing.js: Freehand stroke capture (record touch points during drag)
-- [ ] curves.js: Ramer-Douglas-Peucker simplification
-- [ ] curves.js: Catmull-Rom spline rendering through simplified points
-- [ ] Control point handles visible after stroke is drawn
-- [ ] Select tool: tap stroke to select, drag control point to reshape
-- [ ] Undo for add/delete stroke
-- [ ] Auto-save to localStorage
+- [x] drawing.js: Freehand stroke capture (record touch points during drag)
+- [x] curves.js: Ramer-Douglas-Peucker simplification
+- [x] curves.js: Catmull-Rom spline rendering through simplified points
+- [x] Control point handles visible after stroke is drawn
+- [x] Select tool: tap stroke to select, drag control point to reshape
+- [x] Undo for add stroke / move control point
+- [x] Auto-save to localStorage
 
 ---
 
-### Phase 3 — Snap System
+### Phase 3 — Snap System ✅ COMPLETE
 **Goal:** Lines snap to existing endpoints and lines naturally.
 
-- [ ] snap.js: Endpoint proximity detection (24px radius)
-- [ ] snap.js: Line proximity detection
-- [ ] Visual snap indicator (glowing ring) while drawing
-- [ ] Snap on stroke start
-- [ ] Snap on stroke end
-- [ ] snapConnections tracked on strokes
-- [ ] Test on mobile — snap radius feels right for finger input
+- [x] snap.js: Endpoint proximity detection (36px radius — increased from 24px)
+- [x] snap.js: Line proximity detection
+- [x] Visual snap indicator (glowing ring) while drawing
+- [x] Snap on stroke start (captured at pointerdown for mobile reliability)
+- [x] Snap on stroke end
+- [x] Freehand loop closure (snaps end to start when drawing a closed shape)
+- [x] snapConnections tracked on strokes
+- [x] Snap toggle button (🧲) in toolbar
+- [x] Tested on mobile — snap radius tuned for finger input
 
 ---
 
-### Phase 4 — Multiple Planes
+### Phase 4 — Multiple Planes ✅ COMPLETE
 **Goal:** Add, manage, and draw on multiple planes simultaneously.
 
-- [ ] planes.js: Add new plane with orientation presets (Front, Top, Right)
-- [ ] Side panel: full plane list with color, name, visibility toggle, active selector
-- [ ] Color coding: each plane assigns next color from default list
-- [ ] Visibility toggle hides/shows all strokes on that plane
-- [ ] Switch active plane from side panel
-- [ ] Lines stay on their plane in 3D space correctly
-- [ ] Plane grids toggleable individually
+- [x] planes.js: Add new plane with orientation presets (Front, Top, Right)
+- [x] Infinite plane fallback in getPlaneIntersection() for edge-on camera angles
+- [x] Side panel: full plane list with color, name, visibility toggles, active selector
+- [x] Inline name editing (tap name → input field)
+- [x] Color coding: each plane assigns next color from default list
+- [x] Lines visibility toggle hides/shows all strokes on that plane (pencil icon)
+- [x] Grid visibility toggle hides/shows plane grid (eye icon)
+- [x] Switch active plane from side panel
+- [x] Lines stay on their plane in 3D space correctly
+- [x] Delete plane (trash icon) — also deletes all strokes on that plane
+- [x] Cross-plane handle drag uses correct plane intersection
+- [x] Line width slider (1–12px) in side panel — uses Line2/LineMaterial for true thick lines
+- [x] Erase tool — tap any stroke to delete it; drag still orbits camera
+- [x] Delete/Backspace key deletes selected stroke in Select mode
+- [x] Mobile-responsive toolbar — all buttons fit on ~390px screens without overflow
+- [x] Save/restore includes orientation field; backward-compatible with old saves
 
 ---
 
 ### Phase 5 — Polish and PWA
 **Goal:** Installable, shareable, complete feeling app.
 
-- [ ] PWA setup: manifest.json, service-worker.js, icons
+- [x] PWA setup: manifest.json, service-worker.js, icons
 - [ ] Export sketch as JSON (download file)
 - [ ] Import sketch from JSON file
 - [ ] Export visible strokes as SVG (flattened 2D)
@@ -311,17 +374,28 @@ Each phase should result in something testable on a real device before moving on
 ## Development Notes
 
 - Always test on a real touch device after any drawing or gesture change
-- Snap radius may need tuning based on real finger feel — start at 24px
+- Snap radius is `SNAP_RADIUS_PX = 36` in drawing.js — tune if needed
 - Keep Three.js loaded from CDN (unpkg or cdnjs) — no local copy needed
+- Use `Line2` + `LineMaterial` + `LineGeometry` for all stroke rendering (not
+  `THREE.Line` + `LineBasicMaterial`) — WebGL ignores linewidth on non-macOS
 - service-worker.js should cache CDN scripts for offline use
 - Avoid jQuery or any UI framework — vanilla JS only
 - main.js initializes all modules and wires event flow between them
 - When adding a feature, identify which file owns it before writing any code
+- Infinite plane fallback must remain in `getPlaneIntersection()` — without it,
+  Top and Right planes are unusable when viewed at shallow camera angles
 
 ---
 
 ## Current Status
 
-Project not yet started. Phase 1 is the starting point.
-Repository is empty. Begin by setting up the full file structure,
-then implement Phase 1 top to bottom before touching Phase 2.
+**As of 2026-03-18: Phases 1–4 complete. Phase 5 in progress (PWA done; export/import pending).**
+
+The app is fully functional for multi-plane 3D sketching on mobile and desktop:
+- Draw straight lines and freehand curves on Front, Top, and Right planes
+- Snap to endpoints and lines with visual indicator; toggle snapping on/off
+- Select strokes, drag control points to reshape, delete with key or Erase tool
+- Adjust line width per-session (1–12px) via side panel slider
+- Add, rename, reorder, and delete planes; toggle grid and stroke visibility per plane
+- All state auto-saved to localStorage; survives page reload
+- Installable as a PWA (manifest + service worker in place)
