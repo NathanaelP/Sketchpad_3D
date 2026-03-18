@@ -29,7 +29,8 @@ let startPoint           = null; // THREE.Vector3
 let startMarker          = null; // THREE.Mesh sphere shown at first tap
 let startSnapTarget      = null; // {point, strokeId} | null — snap recorded at first tap
 let pointerDownPos       = null;
-let pendingLineStartSnap = null; // snap candidate captured at pointerdown (more reliable than pointerup on mobile)
+let pendingLineStartSnap  = null; // snap candidate captured at pointerdown (more reliable than pointerup on mobile)
+let pendingStartScreenPos = null; // {x,y} screen coords at pointerdown — used as fallback for start placement
 
 // Freehand tool
 let rawPoints3D       = [];
@@ -91,8 +92,9 @@ function onPointerDown(e) {
   if (activeTool === 'line' || activeTool === 'erase') {
     pointerDownPos       = { x: e.clientX, y: e.clientY };
     if (activeTool === 'line') {
-      // Capture snap at exact touch-down — lift position can be 8-15 px off on mobile
-      pendingLineStartSnap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
+      // Capture snap and screen position at exact touch-down — lift position can be 8-15 px off on mobile
+      pendingLineStartSnap  = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
+      pendingStartScreenPos = { x: e.clientX, y: e.clientY };
     }
     renderer.domElement.setPointerCapture(e.pointerId);
 
@@ -234,12 +236,16 @@ function handleLineTap(e) {
   if (!plane || !plane.meshRef) return;
 
   if (drawState === STATE_IDLE) {
-    // Prefer snap captured at pointerdown; fall back to pointerup coords
-    const snap  = pendingLineStartSnap ?? snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
+    // Use pointerdown screen position (not drifted pointerup position) for start placement
+    const pdx = pendingStartScreenPos?.x ?? e.clientX;
+    const pdy = pendingStartScreenPos?.y ?? e.clientY;
+    pendingStartScreenPos = null;
+
+    const snap = pendingLineStartSnap ?? snapEndpoint(pdx, pdy) ?? snapLine(pdx, pdy);
     pendingLineStartSnap = null;
     const point = snap
       ? new THREE.Vector3(snap.point.x, snap.point.y, snap.point.z)
-      : getPlaneIntersection(e, plane.meshRef);
+      : getPlaneIntersection({ clientX: pdx, clientY: pdy }, plane.meshRef);
     if (!point) return;
 
     startPoint      = point instanceof THREE.Vector3 ? point : point.clone();
@@ -301,9 +307,10 @@ function commitLine(p1, p2, plane, startSnap, endSnap) {
 
 function cancelCurrentStroke() {
   removeStartMarker();
-  startPoint           = null;
-  pendingLineStartSnap = null;
-  drawState            = STATE_IDLE;
+  startPoint            = null;
+  pendingLineStartSnap  = null;
+  pendingStartScreenPos = null;
+  drawState             = STATE_IDLE;
 }
 
 // ─── Freehand tool ────────────────────────────────────────────────────────────
