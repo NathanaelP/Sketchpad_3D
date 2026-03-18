@@ -79,15 +79,21 @@ export function initDrawing(sceneRef, cameraRef, rendererRef, getActivePlane, sa
       cancelFreehand();
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') undoLast();
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedStroke) {
+      e.preventDefault();
+      deleteStroke(selectedStroke.id);
+    }
   });
 }
 
 // ─── Pointer handlers ─────────────────────────────────────────────────────────
 function onPointerDown(e) {
-  if (activeTool === 'line') {
+  if (activeTool === 'line' || activeTool === 'erase') {
     pointerDownPos       = { x: e.clientX, y: e.clientY };
-    // Capture snap at exact touch-down — lift position can be 8-15 px off on mobile
-    pendingLineStartSnap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
+    if (activeTool === 'line') {
+      // Capture snap at exact touch-down — lift position can be 8-15 px off on mobile
+      pendingLineStartSnap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
+    }
     renderer.domElement.setPointerCapture(e.pointerId);
 
   } else if (activeTool === 'freehand') {
@@ -203,6 +209,19 @@ function onPointerUp(e) {
     freehandStartSnap = null;
     hideSnapIndicator();
     cancelFreehand();
+
+  } else if (activeTool === 'erase') {
+    if (!pointerDownPos) return;
+    const dx = e.clientX - pointerDownPos.x;
+    const dy = e.clientY - pointerDownPos.y;
+    pointerDownPos = null;
+    if (Math.hypot(dx, dy) >= TAP_MOVE_THRESHOLD) return; // orbit gesture, not tap
+    setNDC(e);
+    const hits = raycaster.intersectObjects(strokes.map(s => s.lineRef).filter(Boolean));
+    if (hits.length > 0) {
+      const stroke = strokes.find(s => s.lineRef === hits[0].object);
+      if (stroke) deleteStroke(stroke.id);
+    }
 
   } else if (activeTool === 'select') {
     handleSelectPointerUp(e);
@@ -332,6 +351,29 @@ function cancelFreehand() {
   rawPoints3D     = [];
   activePointerId = null;
   if (drawState === STATE_FREEHAND_DRAWING) drawState = STATE_IDLE;
+}
+
+// ─── Delete stroke ────────────────────────────────────────────────────────────
+function deleteStroke(strokeId) {
+  const idx = strokes.findIndex(s => s.id === strokeId);
+  if (idx === -1) return;
+  const stroke = strokes[idx];
+
+  if (stroke.selected) deselectAll();
+  scene.remove(stroke.threeObject);
+  stroke.lineRef.geometry.dispose();
+  stroke.lineRef.material.dispose();
+  stroke.handleGroupRef.children.forEach(m => { m.geometry.dispose(); m.material.dispose(); });
+
+  stroke.snapConnections.forEach(otherId => {
+    const other = strokes.find(s => s.id === otherId);
+    if (other) other.snapConnections = other.snapConnections.filter(id => id !== stroke.id);
+  });
+
+  strokes.splice(idx, 1);
+  // Remove this stroke's history entries (erase is not undoable)
+  history.splice(0, history.length, ...history.filter(e => e.strokeId !== strokeId));
+  saveCb?.();
 }
 
 // ─── Snap connections ─────────────────────────────────────────────────────────
@@ -681,7 +723,7 @@ export function setActiveTool(toolName) {
 
   // CSS cursor hint
   if (renderer) {
-    renderer.domElement.classList.remove('tool-line', 'tool-freehand', 'tool-select');
+    renderer.domElement.classList.remove('tool-line', 'tool-freehand', 'tool-select', 'tool-erase');
     renderer.domElement.classList.add(`tool-${toolName}`);
   }
 }

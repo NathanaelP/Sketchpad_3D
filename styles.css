@@ -403,3 +403,16 @@ html, body {
 }
 
 #viewport-canvas.tool-freehand { cursor: crosshair; }
+#viewport-canvas.tool-erase    { cursor: cell; }
+
+/* ── Mobile: compact toolbar ── */
+@media (max-width: 599px) {
+  .app-name           { display: none; }
+  #active-tool-label  { display: none; }
+  #toolbar            { gap: 4px; padding: 0 8px; }
+  .tool-group         { gap: 2px; }
+  .tool-btn           { padding: 4px 8px; font-size: 12px; }
+  #undo-btn,
+  #menu-btn,
+  #snap-btn           { width: 32px; height: 32px; font-size: 16px; }
+}
