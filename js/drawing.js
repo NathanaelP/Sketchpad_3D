@@ -521,6 +521,7 @@ function buildLineObject(controlPoints, color) {
   const mat = new LineMaterial({
     color:      new THREE.Color(color),
     linewidth:  lineWidth,
+    linecap:    'butt',  // ends flush at control points — prevents cap overshoot past snap targets
     resolution: new THREE.Vector2(renderer.domElement.clientWidth, renderer.domElement.clientHeight),
   });
   return new Line2(geo, mat);
