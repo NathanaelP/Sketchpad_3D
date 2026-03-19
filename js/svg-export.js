@@ -17,12 +17,10 @@ export function exportSVG(planes, strokes, camera, renderer, lineWidth) {
   const w = renderer.domElement.clientWidth;
   const h = renderer.domElement.clientHeight;
 
-  const visiblePlaneIds = new Set(
-    planes.filter(p => p.visible && p.linesVisible).map(p => p.id)
-  );
-
+  // A stroke is exported if its Three.js object is currently visible in the scene.
+  // This exactly mirrors what the user sees — independent of plane grid visibility.
   const paths = strokes
-    .filter(s => visiblePlaneIds.has(s.planeId))
+    .filter(s => s.threeObject && s.threeObject.visible !== false && s.points?.length >= 2)
     .map(s => {
       const pts = catmullRomCurve(s.points, 20).map(pt => project(pt, camera, w, h));
       const d   = pts
