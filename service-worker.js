@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sketch3d-v6';
+const CACHE_NAME = 'sketch3d-v7';
 
 const PRECACHE_URLS = [
   '/',
@@ -12,6 +12,7 @@ const PRECACHE_URLS = [
   '/js/curves.js',
   '/js/snap.js',
   '/js/storage.js',
+  '/js/svg-export.js',
   '/manifest.json',
 ];
 
