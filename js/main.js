@@ -4,7 +4,7 @@ import {
   getActivePlane, getAllPlanes,
   setPlaneVisibility, setLinesVisible,
   setActivePlane, renamePlane,
-  restorePlane, deletePlane,
+  restorePlane, deletePlane, clearAllPlanes,
 } from './planes.js';
 import {
   initDrawing, setActiveTool, undoLast,
@@ -14,7 +14,8 @@ import {
   deleteStrokesByPlane,
 } from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
-import { save, load } from './storage.js';
+import { save, load, exportJSON, importJSON } from './storage.js';
+import { exportSVG } from './svg-export.js';
 
 window.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('viewport-canvas');
@@ -112,10 +113,65 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 9. Render loop — must start last
+  // 9. File I/O — export JSON, import JSON, export SVG
+  function downloadFile(content, filename, mime) {
+    const a = document.createElement('a');
+    a.href     = URL.createObjectURL(new Blob([content], { type: mime }));
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  document.getElementById('export-json-btn')?.addEventListener('click', () => {
+    downloadFile(exportJSON(getAllPlanes(), getStrokes()), 'sketch.json', 'application/json');
+  });
+
+  document.getElementById('export-svg-btn')?.addEventListener('click', () => {
+    downloadFile(
+      exportSVG(getAllPlanes(), getStrokes(), getCamera(), getRenderer(), getLineWidth()),
+      'sketch.svg', 'image/svg+xml'
+    );
+  });
+
+  document.getElementById('import-json-btn')?.addEventListener('click', () => {
+    document.getElementById('import-file-input')?.click();
+  });
+
+  document.getElementById('import-file-input')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = ''; // allow re-importing the same file
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = importJSON(ev.target.result);
+        // Clear existing state
+        getAllPlanes().forEach(p => deleteStrokesByPlane(p.id));
+        clearAllPlanes();
+        // Restore from imported data
+        data.planes.forEach(p => restorePlane(p));
+        data.strokes.forEach(s => restoreStroke(s));
+        // Activate the plane that was active at export time
+        const active = data.planes.find(p => p.active);
+        if (active) setActivePlane(active.id);
+        else if (getAllPlanes().length) getAllPlanes()[0].active = true;
+        // Re-apply lines visibility
+        getAllPlanes().forEach(plane => {
+          if (!plane.linesVisible) setPlaneStrokesVisible(plane.id, false);
+        });
+        updatePlaneList(getAllPlanes());
+        saveCb();
+      } catch (err) {
+        alert('Could not load sketch: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // 10. Render loop — must start last
   startRenderLoop();
 
-  // 10. Service worker registration
+  // 11. Service worker registration
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/service-worker.js').catch(() => {

@@ -169,6 +169,21 @@ export function renamePlane(planeId, newName) {
   if (plane) plane.name = newName;
 }
 
+// Remove every plane from the scene and empty the planes array.
+// Called before restoring an imported sketch.
+export function clearAllPlanes() {
+  planes.forEach(plane => {
+    if (plane.threeObject) {
+      sceneRef.remove(plane.threeObject);
+      plane.threeObject.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+      });
+    }
+  });
+  planes.splice(0, planes.length);
+}
+
 export function deletePlane(planeId) {
   if (planes.length <= 1) return; // never delete the last plane
   const idx = planes.findIndex(p => p.id === planeId);

@@ -12,6 +12,7 @@ const PRECACHE_URLS = [
   '/js/curves.js',
   '/js/snap.js',
   '/js/storage.js',
+  '/js/svg-export.js',
   '/manifest.json',
 ];
 
