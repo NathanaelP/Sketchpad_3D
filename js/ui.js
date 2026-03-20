@@ -206,30 +206,25 @@ function renderPlaneRow(plane, canDelete) {
     label.className   = 'lw-label';
     label.textContent = 'Grid';
 
-    const sel = document.createElement('select');
-    sel.className = 'grid-res-select';
-    [
-      [0.25, '0.25 (fine)'],
-      [0.5,  '0.5 (default)'],
-      [1.0,  '1.0'],
-      [2.0,  '2.0 (coarse)'],
-    ].forEach(([val, text]) => {
-      const opt = document.createElement('option');
-      opt.value       = String(val);
-      opt.textContent = text;
-      opt.selected    = (plane.gridResolution ?? 0.5) === val;
-      sel.appendChild(opt);
-    });
+    const btnGroup = document.createElement('div');
+    btnGroup.className = 'grid-res-btns';
 
-    sel.addEventListener('change', e => {
-      e.stopPropagation();
-      planesAPI?.setGridResolution?.(plane.id, parseFloat(e.target.value));
+    const currentRes = plane.gridResolution ?? 0.5;
+    [0.25, 0.5, 1.0, 2.0].forEach(val => {
+      const btn = document.createElement('button');
+      btn.className   = 'grid-res-btn' + (currentRes === val ? ' active' : '');
+      btn.textContent = val === 0.25 ? '.25' : val === 0.5 ? '.5' : String(val);
+      btn.title       = `Grid size ${val}`;
+      btn.addEventListener('pointerdown', e => e.stopPropagation());
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        planesAPI?.setGridResolution?.(plane.id, val);
+      });
+      btnGroup.appendChild(btn);
     });
 
     gridRow.appendChild(label);
-    gridRow.appendChild(sel);
-    // Prevent clicks/taps on the grid row from bubbling to the plane-row click
-    // handler, which would call updatePlaneList() and destroy the native dropdown.
+    gridRow.appendChild(btnGroup);
     gridRow.addEventListener('pointerdown', e => e.stopPropagation());
     gridRow.addEventListener('click',       e => e.stopPropagation());
     row.appendChild(gridRow);
