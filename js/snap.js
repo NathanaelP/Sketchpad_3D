@@ -78,8 +78,8 @@ export function snapToGrid(worldPoint, plane) {
   const res   = plane.gridResolution ?? 0.5;
   const local = new THREE.Vector3(worldPoint.x, worldPoint.y, worldPoint.z);
   group.worldToLocal(local);
-  local.x = Math.round(local.x / res) * res;
-  local.y = Math.round(local.y / res) * res;
+  local.x = Math.round(local.x / (res / 2)) * (res / 2);
+  local.y = Math.round(local.y / (res / 2)) * (res / 2);
   // local.z stays ~0 — point is already on the plane
   const snapped = group.localToWorld(local);
   return { x: snapped.x, y: snapped.y, z: snapped.z };
