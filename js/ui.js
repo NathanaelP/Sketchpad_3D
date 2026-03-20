@@ -8,7 +8,7 @@ let planesAPI                 = null;
 let desktopPanelOpen = true;
 
 // planes API shape:
-//   { getAllPlanes, setPlaneVisibility, addPlane, setActivePlane, renamePlane, deletePlane }
+//   { getAllPlanes, setPlaneVisibility, addPlane, setActivePlane, renamePlane, deletePlane, setGridResolution }
 export function initUI(planes, onToolChange, onUndo, onLinesVisibilityToggle, onDeletePlane) {
   planesAPI              = planes;
   onToolChangeCb         = onToolChange;
@@ -195,6 +195,40 @@ function renderPlaneRow(plane, canDelete) {
       if (onDeletePlaneCb) onDeletePlaneCb(plane.id);
     });
     row.appendChild(delBtn);
+  }
+
+  // Grid resolution selector — only shown for the active plane
+  if (plane.active) {
+    const gridRow = document.createElement('div');
+    gridRow.className = 'plane-grid-row';
+
+    const label = document.createElement('span');
+    label.className   = 'lw-label';
+    label.textContent = 'Grid';
+
+    const sel = document.createElement('select');
+    sel.className = 'grid-res-select';
+    [
+      [0.25, '0.25 (fine)'],
+      [0.5,  '0.5 (default)'],
+      [1.0,  '1.0'],
+      [2.0,  '2.0 (coarse)'],
+    ].forEach(([val, text]) => {
+      const opt = document.createElement('option');
+      opt.value       = String(val);
+      opt.textContent = text;
+      opt.selected    = (plane.gridResolution ?? 0.5) === val;
+      sel.appendChild(opt);
+    });
+
+    sel.addEventListener('change', e => {
+      e.stopPropagation();
+      planesAPI?.setGridResolution?.(plane.id, parseFloat(e.target.value));
+    });
+
+    gridRow.appendChild(label);
+    gridRow.appendChild(sel);
+    row.appendChild(gridRow);
   }
 
   return row;

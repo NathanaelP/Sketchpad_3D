@@ -68,3 +68,19 @@ export function findLineSnap(sx, sy, strokes, radiusPx, camera, renderer) {
 
   return closest;
 }
+
+// Snap a world-space point to the nearest grid intersection on the given plane.
+// Uses the plane group's local coordinate system so it works for all orientations.
+// Returns a plain {x,y,z} object.
+export function snapToGrid(worldPoint, plane) {
+  const group = plane.threeObject;
+  if (!group) return worldPoint;
+  const res   = plane.gridResolution ?? 0.5;
+  const local = new THREE.Vector3(worldPoint.x, worldPoint.y, worldPoint.z);
+  group.worldToLocal(local);
+  local.x = Math.round(local.x / res) * res;
+  local.y = Math.round(local.y / res) * res;
+  // local.z stays ~0 — point is already on the plane
+  const snapped = group.localToWorld(local);
+  return { x: snapped.x, y: snapped.y, z: snapped.z };
+}

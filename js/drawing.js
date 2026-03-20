@@ -4,7 +4,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { simplifyPoints, catmullRomCurve } from './curves.js';
 import { getControls } from './viewport.js';
-import { findEndpointSnap, findLineSnap } from './snap.js';
+import { findEndpointSnap, findLineSnap, snapToGrid } from './snap.js';
 import { getPlaneById } from './planes.js';
 
 // ─── State constants ──────────────────────────────────────────────────────────
@@ -60,6 +60,8 @@ function snapEndpoint(sx, sy) {
 function snapLine(sx, sy) {
   return snapEnabled ? findLineSnap(sx, sy, strokes, SNAP_RADIUS_PX, camera, renderer) : null;
 }
+// Grid snap — applied only when endpoint/line snap didn't fire
+function applyGridSnap(pt, plane) { return snapToGrid(pt, plane); }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 export function initDrawing(sceneRef, cameraRef, rendererRef, getActivePlane, saveCallback) {
@@ -104,11 +106,11 @@ function onPointerDown(e) {
     const plane = getActivePlaneFn();
     if (!plane || !plane.meshRef) return;
 
-    // Snap start point — endpoint priority, line snap fallback
+    // Snap start point — endpoint priority, line snap fallback, grid snap last
     const snap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
     const pt   = snap ? snap.point : (() => {
       const p = getPlaneIntersection(e, plane.meshRef);
-      return p ? { x: p.x, y: p.y, z: p.z } : null;
+      return p ? applyGridSnap({ x: p.x, y: p.y, z: p.z }, plane) : null;
     })();
     if (!pt) return;
 
@@ -245,7 +247,12 @@ function handleLineTap(e) {
     pendingLineStartSnap = null;
     const point = snap
       ? new THREE.Vector3(snap.point.x, snap.point.y, snap.point.z)
-      : getPlaneIntersection({ clientX: pdx, clientY: pdy }, plane.meshRef);
+      : (() => {
+          const raw = getPlaneIntersection({ clientX: pdx, clientY: pdy }, plane.meshRef);
+          if (!raw) return null;
+          const g = applyGridSnap({ x: raw.x, y: raw.y, z: raw.z }, plane);
+          return new THREE.Vector3(g.x, g.y, g.z);
+        })();
     if (!point) return;
 
     startPoint      = point instanceof THREE.Vector3 ? point : point.clone();
@@ -255,11 +262,16 @@ function handleLineTap(e) {
     drawState = STATE_AWAITING_SECOND;
 
   } else if (drawState === STATE_AWAITING_SECOND) {
-    // Endpoint snap first, line snap as fallback
+    // Endpoint snap first, line snap fallback, grid snap last
     const snap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
     const point = snap
       ? new THREE.Vector3(snap.point.x, snap.point.y, snap.point.z)
-      : getPlaneIntersection(e, plane.meshRef);
+      : (() => {
+          const raw = getPlaneIntersection(e, plane.meshRef);
+          if (!raw) return null;
+          const g = applyGridSnap({ x: raw.x, y: raw.y, z: raw.z }, plane);
+          return new THREE.Vector3(g.x, g.y, g.z);
+        })();
     if (!point) return;
 
     commitLine(startPoint, point, plane, startSnapTarget, snap);
@@ -315,8 +327,15 @@ function cancelCurrentStroke() {
 
 // ─── Freehand tool ────────────────────────────────────────────────────────────
 function commitFreehand(rawPoints, plane, startSnap, endSnap) {
-  const controlPoints = simplifyPoints(rawPoints, 0.05);
+  let controlPoints = simplifyPoints(rawPoints, 0.05);
   if (controlPoints.length < 2) return;
+
+  // Grid-snap simplified control points; skip endpoints that already locked to a stroke
+  controlPoints = controlPoints.map((pt, i) => {
+    if (i === 0 && startSnap) return pt;
+    if (i === controlPoints.length - 1 && endSnap) return pt;
+    return applyGridSnap(pt, plane);
+  });
 
   const lineObj     = buildLineObject(controlPoints, plane.color);
   const handleGroup = buildHandleGroup(controlPoints, plane.color);
