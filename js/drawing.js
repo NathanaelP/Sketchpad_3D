@@ -32,6 +32,10 @@ let pointerDownPos       = null;
 let pendingLineStartSnap  = null; // snap candidate captured at pointerdown (more reliable than pointerup on mobile)
 let pendingStartScreenPos = null; // {x,y} screen coords at pointerdown — used as fallback for start placement
 
+// Line preview + dimension label
+let linePreviewLine = null; // THREE.Line — ghost line while awaiting second point
+let dimensionLabel  = null; // HTMLElement — lazy-created inside #dimension-overlay
+
 // Freehand tool
 let rawPoints3D       = [];
 let freehandPreviewLine = null;
@@ -90,6 +94,56 @@ export function initDrawing(sceneRef, cameraRef, rendererRef, getActivePlane, sa
       deleteStroke(selectedStroke.id);
     }
   });
+}
+
+// ─── Line preview helpers ─────────────────────────────────────────────────────
+function updateLinePreview(p1, p2, color) {
+  const pts = [new THREE.Vector3(p1.x, p1.y, p1.z), new THREE.Vector3(p2.x, p2.y, p2.z)];
+  if (!linePreviewLine) {
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(color), opacity: 0.45, transparent: true });
+    linePreviewLine = new THREE.Line(geo, mat);
+    scene.add(linePreviewLine);
+  } else {
+    linePreviewLine.geometry.setFromPoints(pts);
+    linePreviewLine.geometry.attributes.position.needsUpdate = true;
+  }
+}
+
+function removeLinePreview() {
+  if (!linePreviewLine) return;
+  scene.remove(linePreviewLine);
+  linePreviewLine.geometry.dispose();
+  linePreviewLine.material.dispose();
+  linePreviewLine = null;
+}
+
+function showDimensionLabel(clientX, clientY, p1, p2, plane) {
+  if (!dimensionLabel) {
+    const overlay = document.getElementById('dimension-overlay');
+    if (!overlay) return;
+    dimensionLabel = document.createElement('div');
+    dimensionLabel.className = 'dimension-label';
+    overlay.appendChild(dimensionLabel);
+  }
+  const offset = new THREE.Vector3(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+  const length = offset.length();
+
+  const quat  = new THREE.Quaternion();
+  plane.threeObject.getWorldQuaternion(quat);
+  const xAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(quat);
+  const yAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(quat);
+  let angleDeg = Math.atan2(offset.dot(yAxis), offset.dot(xAxis)) * 180 / Math.PI;
+  if (angleDeg < 0) angleDeg += 360;
+
+  dimensionLabel.textContent   = `${length.toFixed(2)}  ${angleDeg.toFixed(1)}\u00b0`;
+  dimensionLabel.style.left    = `${clientX + 16}px`;
+  dimensionLabel.style.top     = `${clientY - 38}px`;
+  dimensionLabel.style.display = 'block';
+}
+
+function hideDimensionLabel() {
+  if (dimensionLabel) dimensionLabel.style.display = 'none';
 }
 
 // ─── Pointer handlers ─────────────────────────────────────────────────────────
@@ -151,12 +205,21 @@ function onPointerMove(e) {
     else      hideSnapIndicator();
 
   } else if (activeTool === 'line' && drawState === STATE_AWAITING_SECOND) {
-    // Show snap ring for the upcoming second tap
     const plane = getActivePlaneFn();
-    if (!plane) return;
+    if (!plane || !plane.meshRef || !startPoint) return;
     const snap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
-    if (snap) showSnapIndicator(snap.point, plane.normal);
-    else      hideSnapIndicator();
+    let endPt;
+    if (snap) {
+      showSnapIndicator(snap.point, plane.normal);
+      endPt = snap.point;
+    } else {
+      hideSnapIndicator();
+      const raw = getPlaneIntersection(e, plane.meshRef);
+      if (!raw) { hideDimensionLabel(); return; }
+      endPt = applyGridSnap({ x: raw.x, y: raw.y, z: raw.z }, plane);
+    }
+    updateLinePreview(startPoint, endPt, plane.color);
+    showDimensionLabel(e.clientX, e.clientY, startPoint, endPt, plane);
 
   } else if (activeTool === 'select' && drawState === SELECT_HANDLE_DRAGGING) {
     handleSelectDrag(e);
@@ -280,6 +343,8 @@ function handleLineTap(e) {
     commitLine(startPoint, point, plane, startSnapTarget, snap);
     startSnapTarget = null;
     hideSnapIndicator();
+    removeLinePreview();
+    hideDimensionLabel();
     cancelCurrentStroke();
   }
 }
@@ -322,6 +387,8 @@ function commitLine(p1, p2, plane, startSnap, endSnap) {
 
 function cancelCurrentStroke() {
   removeStartMarker();
+  removeLinePreview();
+  hideDimensionLabel();
   startPoint            = null;
   pendingLineStartSnap  = null;
   pendingStartScreenPos = null;
