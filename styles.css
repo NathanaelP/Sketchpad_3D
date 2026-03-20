@@ -447,6 +447,29 @@ html, body {
   outline: none;
 }
 
+/* ── Dimension overlay ── */
+#dimension-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.dimension-label {
+  position: absolute;
+  display: none;
+  background: rgba(22, 22, 40, 0.88);
+  color: var(--text-primary);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid rgba(79, 195, 247, 0.35);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+
 /* ── Desktop: panel pushes canvas ── */
 /* Panel open/close is handled by the global .open class rules (same as mobile).   */
 /* initUI adds .open to both #side-panel and #panel-tab on desktop startup.        */
