@@ -60,8 +60,11 @@ function snapEndpoint(sx, sy) {
 function snapLine(sx, sy) {
   return snapEnabled ? findLineSnap(sx, sy, strokes, SNAP_RADIUS_PX, camera, renderer) : null;
 }
-// Grid snap — applied only when endpoint/line snap didn't fire
-function applyGridSnap(pt, plane) { return snapToGrid(pt, plane); }
+// Grid snap — applied only when endpoint/line snap didn't fire; respects per-plane toggle
+function applyGridSnap(pt, plane) {
+  if (!snapEnabled || plane.gridSnap === false) return pt;
+  return snapToGrid(pt, plane);
+}
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 export function initDrawing(sceneRef, cameraRef, rendererRef, getActivePlane, saveCallback) {

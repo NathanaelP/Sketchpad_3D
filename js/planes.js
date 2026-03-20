@@ -147,6 +147,7 @@ export function createDefaultPlane() {
     normal:         { x: 0, y: 0, z: 1 },
     position:       { x: 0, y: 0, z: 0 },
     gridResolution: 0.5,
+    gridSnap:       true,
     threeObject:    null,
     meshRef:        null,
   };
@@ -170,6 +171,7 @@ export function addPlane(orientationName = 'front') {
     normal:         { ...orient.normal },
     position:       { x: 0, y: 0, z: 0 },
     gridResolution: 0.5,
+    gridSnap:       true,
     threeObject:    null,
     meshRef:        null,
   };
@@ -196,6 +198,7 @@ export function restorePlane(savedData) {
     normal:         { ...orient.normal },
     position:       { ...(savedData.position || { x: 0, y: 0, z: 0 }) },
     gridResolution: savedData.gridResolution ?? 0.5,
+    gridSnap:       savedData.gridSnap ?? true,
     threeObject:    null,
     meshRef:        null,
   };
@@ -288,6 +291,11 @@ export function setGridResolution(planeId, resolution) {
     });
   }
   group.add(buildScaleGroup(plane));
+}
+
+export function setGridSnap(planeId, enabled) {
+  const plane = planes.find(p => p.id === planeId);
+  if (plane) plane.gridSnap = enabled;
 }
 
 export function deletePlane(planeId) {

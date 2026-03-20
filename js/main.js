@@ -5,7 +5,7 @@ import {
   setPlaneVisibility, setLinesVisible,
   setActivePlane, renamePlane,
   restorePlane, deletePlane, clearAllPlanes,
-  setGridResolution,
+  setGridResolution, setGridSnap,
 } from './planes.js';
 import {
   initDrawing, setActiveTool, undoLast,
@@ -78,6 +78,10 @@ window.addEventListener('DOMContentLoaded', () => {
       setGridResolution: (id, res) => {
         setGridResolution(id, res);
         updatePlaneList(getAllPlanes());
+        saveCb();
+      },
+      setGridSnap: (id, enabled) => {
+        setGridSnap(id, enabled);
         saveCb();
       },
     },

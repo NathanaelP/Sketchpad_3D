@@ -14,6 +14,7 @@ export function save(planes, strokes) {
       normal:         { ...p.normal },
       position:       { ...p.position },
       gridResolution: p.gridResolution ?? 0.5,
+      gridSnap:       p.gridSnap ?? true,
     })),
     strokes: strokes.map(s => ({
       id:               s.id,
@@ -55,6 +56,7 @@ export function exportJSON(planes, strokes) {
       normal:         { ...p.normal },
       position:       { ...p.position },
       gridResolution: p.gridResolution ?? 0.5,
+      gridSnap:       p.gridSnap ?? true,
     })),
     strokes: strokes.map(s => ({
       id:              s.id,
