@@ -69,18 +69,40 @@ export function findLineSnap(sx, sy, strokes, radiusPx, camera, renderer) {
   return closest;
 }
 
-// Snap a world-space point to the nearest grid intersection on the given plane.
-// Uses the plane group's local coordinate system so it works for all orientations.
-// Returns a plain {x,y,z} object.
+// Snap a world-space point to the nearest grid intersection or cell center on
+// the given plane. Uses getWorldPosition/getWorldQuaternion which force a fresh
+// matrixWorld update — avoiding the stale-matrix issue that worldToLocal has on
+// mobile when pointer events fire between render frames.
 export function snapToGrid(worldPoint, plane) {
   const group = plane.threeObject;
   if (!group) return worldPoint;
-  const res   = plane.gridResolution ?? 0.5;
-  const local = new THREE.Vector3(worldPoint.x, worldPoint.y, worldPoint.z);
-  group.worldToLocal(local);
-  local.x = Math.round(local.x / (res / 2)) * (res / 2);
-  local.y = Math.round(local.y / (res / 2)) * (res / 2);
-  // local.z stays ~0 — point is already on the plane
-  const snapped = group.localToWorld(local);
-  return { x: snapped.x, y: snapped.y, z: snapped.z };
+  const res = plane.gridResolution ?? 0.5;
+
+  // Force-fresh world transform (getWorldPosition/Quaternion call updateWorldMatrix)
+  const origin = new THREE.Vector3();
+  const quat   = new THREE.Quaternion();
+  group.getWorldPosition(origin);
+  group.getWorldQuaternion(quat);
+
+  // Local X and Y axes expressed in world space
+  const xAxis  = new THREE.Vector3(1, 0, 0).applyQuaternion(quat);
+  const yAxis  = new THREE.Vector3(0, 1, 0).applyQuaternion(quat);
+
+  // Project world point onto the plane's local axes
+  const offset = new THREE.Vector3(
+    worldPoint.x - origin.x,
+    worldPoint.y - origin.y,
+    worldPoint.z - origin.z
+  );
+
+  // Snap at res/2 to hit both intersections (n*res) and cell centers ((n+0.5)*res)
+  const step = res / 2;
+  const px = Math.round(offset.dot(xAxis) / step) * step;
+  const py = Math.round(offset.dot(yAxis) / step) * step;
+
+  return {
+    x: origin.x + xAxis.x * px + yAxis.x * py,
+    y: origin.y + xAxis.y * px + yAxis.y * py,
+    z: origin.z + xAxis.z * px + yAxis.z * py,
+  };
 }
