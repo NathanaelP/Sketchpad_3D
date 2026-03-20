@@ -92,6 +92,8 @@ export function initDrawing(sceneRef, cameraRef, rendererRef, getActivePlane, sa
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') undoLast();
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedStroke) {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       e.preventDefault();
       deleteStroke(selectedStroke.id);
     }
