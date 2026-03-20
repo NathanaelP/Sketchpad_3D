@@ -88,6 +88,16 @@
         <input type="number" id="coord-end-y" class="coord-input" step="0.25" />
       </div>
       <button id="coord-go" title="Commit line (Enter)">&#x2192;</button>
+      <div class="coord-row" id="coord-row-angle">
+        <span class="coord-row-label">Angle</span>
+        <div id="pivot-group">
+          <button class="pivot-btn active" data-pivot="start" title="Pivot: Start point">S</button>
+          <button class="pivot-btn" data-pivot="center" title="Pivot: Center">C</button>
+          <button class="pivot-btn" data-pivot="end" title="Pivot: End point">E</button>
+        </div>
+        <span class="coord-label">°</span>
+        <input type="number" id="coord-angle" class="coord-input coord-input-wide" step="0.5" />
+      </div>
     </div>
 
     <canvas id="viewport-canvas"></canvas>
