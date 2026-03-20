@@ -369,6 +369,18 @@ Each phase should result in something testable on a real device before moving on
 - [ ] Test on desktop Chrome and Firefox
 - [ ] README.md updated with usage instructions
 
+### Phase 6 — Precision Tools and Plane Manipulation
+**Goal:** Give designers accurate control over line dimensions and plane positioning.
+
+- [ ] Grid snapping with adjustable resolution (per plane)
+- [ ] Snap-to-grid toggle per plane (in side panel)
+- [ ] Live dimension display while drawing (length + angle shown near cursor)
+- [ ] Coordinate input for line endpoints (type exact X/Y/Z values)
+- [ ] Line length + angle input mode (enter length and angle to place endpoint)
+- [ ] Plane move handle (axis-constrained drag handle on plane)
+- [ ] Plane position shown in side panel (editable X/Y/Z fields)
+- [ ] Plane rotation by preset angles or numeric input
+
 ---
 
 ## Development Notes
@@ -389,7 +401,7 @@ Each phase should result in something testable on a real device before moving on
 
 ## Current Status
 
-**As of 2026-03-18: Phases 1–4 complete. Phase 5 in progress (PWA done; export/import pending).**
+**As of 2026-03-19: Phases 1–5 complete. Phase 6 planned (Precision Tools and Plane Manipulation).**
 
 The app is fully functional for multi-plane 3D sketching on mobile and desktop:
 - Draw straight lines and freehand curves on Front, Top, and Right planes
@@ -399,3 +411,6 @@ The app is fully functional for multi-plane 3D sketching on mobile and desktop:
 - Add, rename, reorder, and delete planes; toggle grid and stroke visibility per plane
 - All state auto-saved to localStorage; survives page reload
 - Installable as a PWA (manifest + service worker in place)
+- Export sketch as JSON; import from JSON file; export visible strokes as SVG
+- Smooth UI animations (orientation picker slide); dark theme polished
+- README with full usage guide
