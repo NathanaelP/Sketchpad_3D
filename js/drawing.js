@@ -197,29 +197,22 @@ function fillCoordEnd(worldPt, plane) {
 
 // Show bar with only the Start row (STATE_IDLE)
 function showCoordBarForIdle() {
-  const bar      = document.getElementById('coord-bar');
-  const endRow   = document.getElementById('coord-row-end');
-  const angleRow = document.getElementById('coord-row-angle');
-  const goBtn    = document.getElementById('coord-go');
-  if (!bar || !endRow) return;
-  endRow.style.display = 'none';
-  if (angleRow) angleRow.style.display = 'none';
-  if (goBtn) goBtn.style.display = 'none';
-  bar.style.display = 'flex';
+  hideCoordBar();
 }
 
-// Show bar with Start + End rows (STATE_AWAITING_SECOND) and fill start coords
-function showCoordBarForSecond(startWorldPt, plane) {
+// Show bar with End row only (STATE_AWAITING_SECOND) — Start row is for Select mode only
+function showCoordBarForSecond(_startWorldPt, _plane) {
   const bar      = document.getElementById('coord-bar');
+  const startRow = document.getElementById('coord-row-start');
   const endRow   = document.getElementById('coord-row-end');
   const angleRow = document.getElementById('coord-row-angle');
   const goBtn    = document.getElementById('coord-go');
   if (!bar || !endRow) return;
-  fillCoordStart(startWorldPt, plane);
+  if (startRow)  startRow.style.display  = 'none';
+  if (angleRow)  angleRow.style.display  = 'none';
+  if (goBtn)     goBtn.style.display     = '';
   endRow.style.display = 'flex';
-  if (angleRow) angleRow.style.display = 'none';
-  if (goBtn) goBtn.style.display = '';
-  bar.style.display = 'flex';
+  bar.style.display    = 'flex';
 }
 
 function hideCoordBar() {
@@ -310,7 +303,7 @@ function commitSelectEdit() {
   selectEditOldPoints = null;
 }
 
-// Commit line using typed coords; re-reads start fields in case user edited them
+// Commit line using the typed End coords; Start is always the already-placed startPoint
 function commitFromCoordBar() {
   const plane = getActivePlaneFn();
   if (!plane || drawState !== STATE_AWAITING_SECOND) return;
@@ -320,17 +313,8 @@ function commitFromCoordBar() {
   const elx = parseFloat(ex.value);
   const ely = parseFloat(ey.value);
   if (isNaN(elx) || isNaN(ely)) return;
-
-  const sx  = document.getElementById('coord-start-x');
-  const sy  = document.getElementById('coord-start-y');
-  const slx = sx ? parseFloat(sx.value) : NaN;
-  const sly = sy ? parseFloat(sy.value) : NaN;
-  const p1  = (!isNaN(slx) && !isNaN(sly))
-    ? planeLocalToWorld(slx, sly, plane)
-    : new THREE.Vector3(startPoint.x, startPoint.y, startPoint.z);
   const p2 = planeLocalToWorld(elx, ely, plane);
-
-  commitLine(p1, p2, plane, null, null);
+  commitLine(startPoint, p2, plane, startSnapTarget, null);
   startSnapTarget = null;
   hideSnapIndicator();
   removeLinePreview();
@@ -393,18 +377,13 @@ function initCoordBar() {
 
   // ── Line-drawing handler: update ghost preview ──────────────────────────────
   function onLineCoordInput() {
+    if (drawState !== STATE_AWAITING_SECOND || !startPoint) return;
     const plane = getActivePlaneFn();
     if (!plane) return;
-    const slx = parseFloat(sx.value), sly = parseFloat(sy.value);
     const elx = parseFloat(ex.value), ely = parseFloat(ey.value);
-    if (!isNaN(slx) && !isNaN(sly) && drawState === STATE_AWAITING_SECOND) {
-      const sp = planeLocalToWorld(slx, sly, plane);
-      removeStartMarker();
-      placeStartMarker(sp, plane.color);
-      if (!isNaN(elx) && !isNaN(ely)) {
-        const ep = planeLocalToWorld(elx, ely, plane);
-        updateLinePreview(sp, ep, plane.color);
-      }
+    if (!isNaN(elx) && !isNaN(ely)) {
+      const ep = planeLocalToWorld(elx, ely, plane);
+      updateLinePreview(startPoint, ep, plane.color);
     }
   }
 
@@ -418,20 +397,13 @@ function initCoordBar() {
   sx.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    if (activeTool === 'select')      commitSelectEdit();
-    else if (drawState === STATE_IDLE) commitStartFromCoordBar();
-    else                              onLineCoordInput();
+    if (activeTool === 'select') commitSelectEdit();
   });
   sy.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     if (activeTool === 'select') {
       commitSelectEdit();
-    } else if (drawState === STATE_IDLE) {
-      commitStartFromCoordBar();
-    } else {
-      onLineCoordInput();
-      document.getElementById('coord-end-x')?.focus();
     }
   });
   const onEndEnter = (e) => {
@@ -566,14 +538,6 @@ function onPointerMove(e) {
     const snap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
     if (snap) showSnapIndicator(snap.point, plane.normal);
     else      hideSnapIndicator();
-    // Update Start coord bar fields live while hovering (Line tool only)
-    if (activeTool === 'line') {
-      const hoverPt = snap ? snap.point : (() => {
-        const raw = getPlaneIntersection(e, plane.meshRef);
-        return raw ? applyGridSnap({ x: raw.x, y: raw.y, z: raw.z }, plane) : null;
-      })();
-      if (hoverPt) fillCoordStart(hoverPt, plane);
-    }
   }
 }
 
@@ -1181,9 +1145,6 @@ export function setActiveTool(toolName) {
 
   // Always hide snap indicator when switching tools
   hideSnapIndicator();
-
-  // Show coord bar for Line tool; it's already hidden by cancelCurrentStroke for others
-  if (toolName === 'line') showCoordBarForIdle();
 
   // Orbit controls only active when the Orbit tool is selected
   const controls = getControls();
