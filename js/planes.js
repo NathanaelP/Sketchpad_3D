@@ -59,6 +59,7 @@ function createPlaneGroup(planeData) {
   const colorSub  = new THREE.Color(planeData.color).multiplyScalar(0.35);
   const grid      = new THREE.GridHelper(PLANE_SIZE, GRID_DIVISIONS, colorMain, colorSub);
   grid.rotation.x = Math.PI / 2;
+  grid.userData.isGrid = true;
   group.add(grid);
 
   sceneRef.add(group);
@@ -76,11 +77,12 @@ export function createDefaultPlane() {
     visible:     true,
     linesVisible: true,
     active:      true,
-    orientation: 'front',
-    normal:      { x: 0, y: 0, z: 1 },
-    position:    { x: 0, y: 0, z: 0 },
-    threeObject: null,
-    meshRef:     null,
+    orientation:    'front',
+    normal:         { x: 0, y: 0, z: 1 },
+    position:       { x: 0, y: 0, z: 0 },
+    gridResolution: 0.5,
+    threeObject:    null,
+    meshRef:        null,
   };
   createPlaneGroup(planeData);
   planes.push(planeData);
@@ -98,11 +100,12 @@ export function addPlane(orientationName = 'front') {
     visible:     true,
     linesVisible: true,
     active:      false,
-    orientation: orientationName,
-    normal:      { ...orient.normal },
-    position:    { x: 0, y: 0, z: 0 },
-    threeObject: null,
-    meshRef:     null,
+    orientation:    orientationName,
+    normal:         { ...orient.normal },
+    position:       { x: 0, y: 0, z: 0 },
+    gridResolution: 0.5,
+    threeObject:    null,
+    meshRef:        null,
   };
 
   createPlaneGroup(planeData);
@@ -120,14 +123,15 @@ export function restorePlane(savedData) {
     id:          savedData.id,
     name:        savedData.name,
     color:       savedData.color,
-    visible:     savedData.visible  ?? true,
-    linesVisible: savedData.linesVisible ?? true,
-    active:      savedData.active   ?? false,
+    visible:        savedData.visible  ?? true,
+    linesVisible:   savedData.linesVisible ?? true,
+    active:         savedData.active   ?? false,
     orientation,
-    normal:      { ...orient.normal },
-    position:    { ...(savedData.position || { x: 0, y: 0, z: 0 }) },
-    threeObject: null,
-    meshRef:     null,
+    normal:         { ...orient.normal },
+    position:       { ...(savedData.position || { x: 0, y: 0, z: 0 }) },
+    gridResolution: savedData.gridResolution ?? 0.5,
+    threeObject:    null,
+    meshRef:        null,
   };
 
   createPlaneGroup(planeData);
@@ -182,6 +186,28 @@ export function clearAllPlanes() {
     }
   });
   planes.splice(0, planes.length);
+}
+
+export function setGridResolution(planeId, resolution) {
+  const plane = planes.find(p => p.id === planeId);
+  if (!plane || !plane.threeObject) return;
+  plane.gridResolution = resolution;
+
+  const group   = plane.threeObject;
+  const oldGrid = group.children.find(c => c.userData.isGrid);
+  if (oldGrid) {
+    group.remove(oldGrid);
+    oldGrid.geometry.dispose();
+    oldGrid.material.dispose();
+  }
+
+  const divisions = Math.round(PLANE_SIZE / resolution);
+  const colorMain = new THREE.Color(plane.color).multiplyScalar(0.7);
+  const colorSub  = new THREE.Color(plane.color).multiplyScalar(0.35);
+  const newGrid   = new THREE.GridHelper(PLANE_SIZE, divisions, colorMain, colorSub);
+  newGrid.rotation.x     = Math.PI / 2;
+  newGrid.userData.isGrid = true;
+  group.add(newGrid);
 }
 
 export function deletePlane(planeId) {
