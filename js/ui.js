@@ -8,7 +8,7 @@ let planesAPI                 = null;
 let desktopPanelOpen = true;
 
 // planes API shape:
-//   { getAllPlanes, setPlaneVisibility, addPlane, setActivePlane, renamePlane, deletePlane, setGridResolution }
+//   { getAllPlanes, setPlaneVisibility, addPlane, setActivePlane, renamePlane, deletePlane, setGridResolution, setGridSnap }
 export function initUI(planes, onToolChange, onUndo, onLinesVisibilityToggle, onDeletePlane) {
   planesAPI              = planes;
   onToolChangeCb         = onToolChange;
@@ -158,6 +158,20 @@ function renderPlaneRow(plane, canDelete) {
     }
   });
 
+  // Grid snap toggle (# icon)
+  const gridSnapBtn = document.createElement('button');
+  gridSnapBtn.className = 'vis-btn' + (plane.gridSnap === false ? ' hidden' : '');
+  gridSnapBtn.title     = 'Toggle grid snapping';
+  gridSnapBtn.textContent = '#';
+  gridSnapBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const nowEnabled = plane.gridSnap === false;
+    if (planesAPI?.setGridSnap) {
+      planesAPI.setGridSnap(plane.id, nowEnabled);
+      gridSnapBtn.classList.toggle('hidden', !nowEnabled);
+    }
+  });
+
   // Lines visibility toggle (pencil icon)
   const linesBtn = document.createElement('button');
   linesBtn.className = 'vis-btn' + (plane.linesVisible ? '' : ' hidden');
@@ -181,6 +195,7 @@ function renderPlaneRow(plane, canDelete) {
 
   row.appendChild(dot);
   row.appendChild(name);
+  row.appendChild(gridSnapBtn);
   row.appendChild(linesBtn);
   row.appendChild(visBtn);
 
