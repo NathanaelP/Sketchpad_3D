@@ -43,8 +43,10 @@ let activePointerId   = null;
 let freehandStartSnap = null; // {point, strokeId} | null — snap at freehand start
 
 // Select tool
-let selectedStroke = null;
-let dragState      = null; // { stroke, pointIndex, handleMesh, oldPoint }
+let selectedStroke    = null;
+let dragState         = null; // { stroke, pointIndex, handleMesh, oldPoint }
+let selectEditOldPoints = null; // snapshot of stroke.points before coord bar edits (for undo)
+let currentPivot      = 'start'; // 'start' | 'center' | 'end'
 
 // Snap indicator
 let snapIndicatorMesh = null; // THREE.Mesh — lazy-created, reused
@@ -195,23 +197,27 @@ function fillCoordEnd(worldPt, plane) {
 
 // Show bar with only the Start row (STATE_IDLE)
 function showCoordBarForIdle() {
-  const bar    = document.getElementById('coord-bar');
-  const endRow = document.getElementById('coord-row-end');
-  const goBtn  = document.getElementById('coord-go');
+  const bar      = document.getElementById('coord-bar');
+  const endRow   = document.getElementById('coord-row-end');
+  const angleRow = document.getElementById('coord-row-angle');
+  const goBtn    = document.getElementById('coord-go');
   if (!bar || !endRow) return;
   endRow.style.display = 'none';
+  if (angleRow) angleRow.style.display = 'none';
   if (goBtn) goBtn.style.display = 'none';
   bar.style.display = 'flex';
 }
 
-// Show bar with both rows (STATE_AWAITING_SECOND) and fill start coords
+// Show bar with Start + End rows (STATE_AWAITING_SECOND) and fill start coords
 function showCoordBarForSecond(startWorldPt, plane) {
-  const bar    = document.getElementById('coord-bar');
-  const endRow = document.getElementById('coord-row-end');
-  const goBtn  = document.getElementById('coord-go');
+  const bar      = document.getElementById('coord-bar');
+  const endRow   = document.getElementById('coord-row-end');
+  const angleRow = document.getElementById('coord-row-angle');
+  const goBtn    = document.getElementById('coord-go');
   if (!bar || !endRow) return;
   fillCoordStart(startWorldPt, plane);
   endRow.style.display = 'flex';
+  if (angleRow) angleRow.style.display = 'none';
   if (goBtn) goBtn.style.display = '';
   bar.style.display = 'flex';
 }
@@ -219,6 +225,89 @@ function showCoordBarForSecond(startWorldPt, plane) {
 function hideCoordBar() {
   const bar = document.getElementById('coord-bar');
   if (bar) bar.style.display = 'none';
+}
+
+// ── Select-mode coord bar helpers ──────────────────────────────────────────────
+
+// Compute angle of a 2-point line in plane-local degrees (0–360)
+function getAngleDeg(stroke, plane) {
+  const p0 = worldToPlaneLocal(stroke.points[0], plane);
+  const p1 = worldToPlaneLocal(stroke.points[1], plane);
+  let deg = Math.atan2(p1.y - p0.y, p1.x - p0.x) * 180 / Math.PI;
+  if (deg < 0) deg += 360;
+  return deg;
+}
+
+// Populate the angle input (skip if it is currently focused)
+function fillCoordAngle(stroke, plane) {
+  const el = document.getElementById('coord-angle');
+  if (!el || document.activeElement === el) return;
+  el.value = getAngleDeg(stroke, plane).toFixed(1);
+}
+
+// Rotate line endpoints to achieve newAngleDeg around the chosen pivot
+function applyAngleToStroke(newAngleDeg, pivot, stroke, plane) {
+  const p0 = worldToPlaneLocal(stroke.points[0], plane);
+  const p1 = worldToPlaneLocal(stroke.points[1], plane);
+  const dx = p1.x - p0.x, dy = p1.y - p0.y;
+  const L  = Math.sqrt(dx * dx + dy * dy);
+  if (L < 1e-6) return;
+  const θ  = newAngleDeg * Math.PI / 180;
+  const cx = Math.cos(θ), cy = Math.sin(θ);
+
+  let np0, np1;
+  if (pivot === 'start') {
+    np0 = p0;
+    np1 = { x: p0.x + L * cx, y: p0.y + L * cy };
+  } else if (pivot === 'end') {
+    np1 = p1;
+    np0 = { x: p1.x - L * cx, y: p1.y - L * cy };
+  } else {                              // center
+    const mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
+    np0 = { x: mx - (L / 2) * cx, y: my - (L / 2) * cy };
+    np1 = { x: mx + (L / 2) * cx, y: my + (L / 2) * cy };
+  }
+
+  const wp0 = planeLocalToWorld(np0.x, np0.y, plane);
+  const wp1 = planeLocalToWorld(np1.x, np1.y, plane);
+  stroke.points[0] = { x: wp0.x, y: wp0.y, z: wp0.z };
+  stroke.points[1] = { x: wp1.x, y: wp1.y, z: wp1.z };
+  stroke.handleGroupRef.children[0]?.position.set(wp0.x, wp0.y, wp0.z);
+  stroke.handleGroupRef.children[1]?.position.set(wp1.x, wp1.y, wp1.z);
+  regenerateStrokeGeometry(stroke);
+}
+
+// Show coord bar populated from an already-selected 2-point line stroke
+function showCoordBarForSelect(stroke, plane) {
+  const bar      = document.getElementById('coord-bar');
+  const endRow   = document.getElementById('coord-row-end');
+  const angleRow = document.getElementById('coord-row-angle');
+  const goBtn    = document.getElementById('coord-go');
+  if (!bar || !endRow || !angleRow) return;
+  fillCoordStart(stroke.points[0], plane);
+  fillCoordEnd(stroke.points[1], plane);
+  fillCoordAngle(stroke, plane);
+  endRow.style.display   = 'flex';
+  angleRow.style.display = 'flex';
+  if (goBtn) goBtn.style.display = 'none';
+  bar.style.display = 'flex';
+  selectEditOldPoints = null;
+}
+
+// Push undo entry for coord-bar edits on a selected stroke (call on Enter / deselect)
+function commitSelectEdit() {
+  if (!selectedStroke || !selectEditOldPoints) return;
+  const newPoints = selectedStroke.points.map(p => ({ ...p }));
+  if (JSON.stringify(selectEditOldPoints) !== JSON.stringify(newPoints)) {
+    pushHistory({
+      action: 'edit_line_endpoints',
+      strokeId: selectedStroke.id,
+      oldPoints: selectEditOldPoints,
+      newPoints,
+    });
+    saveCb?.();
+  }
+  selectEditOldPoints = null;
 }
 
 // Commit line using typed coords; re-reads start fields in case user edited them
@@ -279,14 +368,35 @@ function initCoordBar() {
   const goBtn = document.getElementById('coord-go');
   if (!sx || !sy || !ex || !ey || !goBtn) return;
 
-  // Live preview: update marker + ghost line as any field value changes
-  function onCoordInput() {
+  // ── Select-mode handler: edit selected stroke's endpoints live ──────────────
+  function onSelectCoordInput() {
+    if (!selectedStroke || selectedStroke.type !== 'line') return;
+    const plane = getPlaneById(selectedStroke.planeId) || getActivePlaneFn();
+    if (!plane) return;
+    if (!selectEditOldPoints)
+      selectEditOldPoints = selectedStroke.points.map(p => ({ ...p }));
+    const slx = parseFloat(sx.value), sly = parseFloat(sy.value);
+    const elx = parseFloat(ex.value), ely = parseFloat(ey.value);
+    if (!isNaN(slx) && !isNaN(sly)) {
+      const sp = planeLocalToWorld(slx, sly, plane);
+      selectedStroke.points[0] = { x: sp.x, y: sp.y, z: sp.z };
+      selectedStroke.handleGroupRef.children[0]?.position.set(sp.x, sp.y, sp.z);
+    }
+    if (!isNaN(elx) && !isNaN(ely)) {
+      const ep = planeLocalToWorld(elx, ely, plane);
+      selectedStroke.points[1] = { x: ep.x, y: ep.y, z: ep.z };
+      selectedStroke.handleGroupRef.children[1]?.position.set(ep.x, ep.y, ep.z);
+    }
+    regenerateStrokeGeometry(selectedStroke);
+    fillCoordAngle(selectedStroke, plane);
+  }
+
+  // ── Line-drawing handler: update ghost preview ──────────────────────────────
+  function onLineCoordInput() {
     const plane = getActivePlaneFn();
     if (!plane) return;
-    const slx = parseFloat(sx.value);
-    const sly = parseFloat(sy.value);
-    const elx = parseFloat(ex.value);
-    const ely = parseFloat(ey.value);
+    const slx = parseFloat(sx.value), sly = parseFloat(sy.value);
+    const elx = parseFloat(ex.value), ely = parseFloat(ey.value);
     if (!isNaN(slx) && !isNaN(sly) && drawState === STATE_AWAITING_SECOND) {
       const sp = planeLocalToWorld(slx, sly, plane);
       removeStartMarker();
@@ -297,32 +407,75 @@ function initCoordBar() {
       }
     }
   }
+
+  function onCoordInput() {
+    if (activeTool === 'select') onSelectCoordInput();
+    else onLineCoordInput();
+  }
   [sx, sy, ex, ey].forEach(el => el.addEventListener('input', onCoordInput));
 
-  // Enter key routing
+  // ── Enter key routing ───────────────────────────────────────────────────────
   sx.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    if (drawState === STATE_IDLE) commitStartFromCoordBar();
-    else onCoordInput();
+    if (activeTool === 'select')      commitSelectEdit();
+    else if (drawState === STATE_IDLE) commitStartFromCoordBar();
+    else                              onLineCoordInput();
   });
   sy.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    if (drawState === STATE_IDLE) {
-      commitStartFromCoordBar(); // already focuses end-x
+    if (activeTool === 'select') {
+      commitSelectEdit();
+    } else if (drawState === STATE_IDLE) {
+      commitStartFromCoordBar();
     } else {
-      onCoordInput();
+      onLineCoordInput();
       document.getElementById('coord-end-x')?.focus();
     }
   });
-  const onEndEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); commitFromCoordBar(); } };
+  const onEndEnter = (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (activeTool === 'select') commitSelectEdit();
+    else commitFromCoordBar();
+  };
   ex.addEventListener('keydown', onEndEnter);
   ey.addEventListener('keydown', onEndEnter);
 
   goBtn.addEventListener('click', commitFromCoordBar);
 
-  // Prevent canvas pointer events from firing while interacting with the bar
+  // ── Pivot buttons ───────────────────────────────────────────────────────────
+  document.querySelectorAll('.pivot-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      document.querySelectorAll('.pivot-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentPivot = btn.dataset.pivot;
+    });
+  });
+
+  // ── Angle input ─────────────────────────────────────────────────────────────
+  const angleInput = document.getElementById('coord-angle');
+  if (angleInput) {
+    angleInput.addEventListener('input', () => {
+      if (activeTool !== 'select' || !selectedStroke) return;
+      const plane = getPlaneById(selectedStroke.planeId) || getActivePlaneFn();
+      if (!plane) return;
+      const deg = parseFloat(angleInput.value);
+      if (isNaN(deg)) return;
+      if (!selectEditOldPoints)
+        selectEditOldPoints = selectedStroke.points.map(p => ({ ...p }));
+      applyAngleToStroke(deg, currentPivot, selectedStroke, plane);
+      fillCoordStart(selectedStroke.points[0], plane);
+      fillCoordEnd(selectedStroke.points[1], plane);
+    });
+    angleInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commitSelectEdit(); }
+    });
+  }
+
+  // Prevent canvas pointer events while interacting with the bar
   const bar = document.getElementById('coord-bar');
   if (bar) bar.addEventListener('pointerdown', (e) => e.stopPropagation());
 }
@@ -779,16 +932,23 @@ function selectStroke(stroke) {
   stroke.lineRef.material.color.set(0xffff00);
   stroke.handleGroupRef.visible = true;
   selectedStroke = stroke;
+  if (stroke.type === 'line' && stroke.points.length === 2) {
+    const plane = getPlaneById(stroke.planeId) || getActivePlaneFn();
+    if (plane) showCoordBarForSelect(stroke, plane);
+  }
 }
 
 function deselectAll() {
   if (selectedStroke) {
+    commitSelectEdit();
     selectedStroke.lineRef.material.color.set(new THREE.Color(selectedStroke.color));
     selectedStroke.handleGroupRef.visible = false;
     selectedStroke.selected = false;
     selectedStroke = null;
   }
   dragState = null;
+  selectEditOldPoints = null;
+  hideCoordBar();
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -938,6 +1098,24 @@ export function undoLast() {
     }
 
     regenerateStrokeGeometry(stroke);
+    saveCb?.();
+
+  } else if (entry.action === 'edit_line_endpoints') {
+    const stroke = strokes.find(s => s.id === entry.strokeId);
+    if (!stroke) return;
+    entry.oldPoints.forEach((pt, i) => {
+      stroke.points[i] = { ...pt };
+      stroke.handleGroupRef.children[i]?.position.set(pt.x, pt.y, pt.z);
+    });
+    regenerateStrokeGeometry(stroke);
+    if (selectedStroke?.id === stroke.id) {
+      const plane = getPlaneById(stroke.planeId) || getActivePlaneFn();
+      if (plane) {
+        fillCoordStart(stroke.points[0], plane);
+        fillCoordEnd(stroke.points[1], plane);
+        fillCoordAngle(stroke, plane);
+      }
+    }
     saveCb?.();
   }
 }
