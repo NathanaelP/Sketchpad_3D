@@ -228,6 +228,10 @@ function renderPlaneRow(plane, canDelete) {
 
     gridRow.appendChild(label);
     gridRow.appendChild(sel);
+    // Prevent clicks/taps on the grid row from bubbling to the plane-row click
+    // handler, which would call updatePlaneList() and destroy the native dropdown.
+    gridRow.addEventListener('pointerdown', e => e.stopPropagation());
+    gridRow.addEventListener('click',       e => e.stopPropagation());
     row.appendChild(gridRow);
   }
 
