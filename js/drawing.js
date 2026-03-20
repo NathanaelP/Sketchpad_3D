@@ -94,6 +94,8 @@ export function initDrawing(sceneRef, cameraRef, rendererRef, getActivePlane, sa
       deleteStroke(selectedStroke.id);
     }
   });
+
+  initCoordBar();
 }
 
 // ─── Line preview helpers ─────────────────────────────────────────────────────
@@ -144,6 +146,81 @@ function showDimensionLabel(clientX, clientY, p1, p2, plane) {
 
 function hideDimensionLabel() {
   if (dimensionLabel) dimensionLabel.style.display = 'none';
+}
+
+// ─── Coordinate bar helpers ───────────────────────────────────────────────────
+function worldToPlaneLocal(worldPt, plane) {
+  const quat = new THREE.Quaternion();
+  plane.threeObject.getWorldQuaternion(quat);
+  const xAxis  = new THREE.Vector3(1, 0, 0).applyQuaternion(quat);
+  const yAxis  = new THREE.Vector3(0, 1, 0).applyQuaternion(quat);
+  const origin = new THREE.Vector3();
+  plane.threeObject.getWorldPosition(origin);
+  const offset = new THREE.Vector3(worldPt.x - origin.x, worldPt.y - origin.y, worldPt.z - origin.z);
+  return { x: offset.dot(xAxis), y: offset.dot(yAxis) };
+}
+
+function planeLocalToWorld(lx, ly, plane) {
+  const quat = new THREE.Quaternion();
+  plane.threeObject.getWorldQuaternion(quat);
+  const xAxis  = new THREE.Vector3(1, 0, 0).applyQuaternion(quat);
+  const yAxis  = new THREE.Vector3(0, 1, 0).applyQuaternion(quat);
+  const origin = new THREE.Vector3();
+  plane.threeObject.getWorldPosition(origin);
+  return new THREE.Vector3(
+    origin.x + xAxis.x * lx + yAxis.x * ly,
+    origin.y + xAxis.y * lx + yAxis.y * ly,
+    origin.z + xAxis.z * lx + yAxis.z * ly
+  );
+}
+
+function showCoordBar(worldPt, plane) {
+  const bar    = document.getElementById('coord-bar');
+  const xInput = document.getElementById('coord-x');
+  const yInput = document.getElementById('coord-y');
+  if (!bar || !xInput || !yInput) return;
+  const local = worldToPlaneLocal(worldPt, plane);
+  if (document.activeElement !== xInput) xInput.value = local.x.toFixed(2);
+  if (document.activeElement !== yInput) yInput.value = local.y.toFixed(2);
+  bar.style.display = 'flex';
+}
+
+function hideCoordBar() {
+  const bar = document.getElementById('coord-bar');
+  if (bar) bar.style.display = 'none';
+}
+
+function commitFromCoordBar() {
+  const plane = getActivePlaneFn();
+  if (!plane || !startPoint || drawState !== STATE_AWAITING_SECOND) return;
+  const xInput = document.getElementById('coord-x');
+  const yInput = document.getElementById('coord-y');
+  if (!xInput || !yInput) return;
+  const lx = parseFloat(xInput.value);
+  const ly = parseFloat(yInput.value);
+  if (isNaN(lx) || isNaN(ly)) return;
+  const worldPt = planeLocalToWorld(lx, ly, plane);
+  commitLine(startPoint, worldPt, plane, startSnapTarget, null);
+  startSnapTarget = null;
+  hideSnapIndicator();
+  removeLinePreview();
+  hideDimensionLabel();
+  hideCoordBar();
+  cancelCurrentStroke();
+}
+
+function initCoordBar() {
+  const xInput = document.getElementById('coord-x');
+  const yInput = document.getElementById('coord-y');
+  const goBtn  = document.getElementById('coord-go');
+  if (!xInput || !yInput || !goBtn) return;
+  const onEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); commitFromCoordBar(); } };
+  xInput.addEventListener('keydown', onEnter);
+  yInput.addEventListener('keydown', onEnter);
+  goBtn.addEventListener('click', commitFromCoordBar);
+  // Prevent canvas pointer events from firing while interacting with the bar
+  const bar = document.getElementById('coord-bar');
+  if (bar) bar.addEventListener('pointerdown', (e) => e.stopPropagation());
 }
 
 // ─── Pointer handlers ─────────────────────────────────────────────────────────
@@ -220,6 +297,7 @@ function onPointerMove(e) {
     }
     updateLinePreview(startPoint, endPt, plane.color);
     showDimensionLabel(e.clientX, e.clientY, startPoint, endPt, plane);
+    showCoordBar(endPt, plane);
 
   } else if (activeTool === 'select' && drawState === SELECT_HANDLE_DRAGGING) {
     handleSelectDrag(e);
@@ -389,6 +467,7 @@ function cancelCurrentStroke() {
   removeStartMarker();
   removeLinePreview();
   hideDimensionLabel();
+  hideCoordBar();
   startPoint            = null;
   pendingLineStartSnap  = null;
   pendingStartScreenPos = null;
