@@ -486,6 +486,8 @@ html, body {
 
 #viewport-canvas.tool-freehand { cursor: crosshair; }
 #viewport-canvas.tool-erase    { cursor: cell; }
+#viewport-canvas.tool-orbit    { cursor: grab; }
+#viewport-canvas.tool-orbit:active { cursor: grabbing; }
 
 /* ── Mobile: compact toolbar ── */
 @media (max-width: 599px) {
