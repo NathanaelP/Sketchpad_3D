@@ -65,6 +65,72 @@ function createPlaneGroup(planeData) {
   sceneRef.add(group);
   planeData.threeObject = group;
   planeData.meshRef     = mesh;
+
+  group.add(buildScaleGroup(planeData));
+}
+
+// ─── Scale ruler helpers ───────────────────────────────────────────────────────
+
+function makeLabelSprite(text, colorHex) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 96; canvas.height = 48;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 96, 48);
+  ctx.fillStyle = new THREE.Color(colorHex).multiplyScalar(0.9).getStyle();
+  ctx.font = 'bold 22px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 48, 24);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.5, 0.25, 1);
+  return sprite;
+}
+
+function buildScaleGroup(planeData) {
+  const scaleGroup = new THREE.Group();
+  scaleGroup.userData.isScale = true;
+
+  const res        = planeData.gridResolution ?? 0.5;
+  const half       = PLANE_SIZE / 2;
+  const tickColor  = new THREE.Color(planeData.color).multiplyScalar(0.7);
+  const totalMajor = Math.round(PLANE_SIZE / res) + 1;
+  const decimFactor = Math.ceil(totalMajor / 11);
+  const verts = [];
+
+  for (let k = 0; k < totalMajor; k++) {
+    const coord = parseFloat((-half + k * res).toFixed(6));
+
+    // Major ticks — bottom edge and left edge
+    verts.push(coord, -half, 0,   coord, -half - 0.25, 0);
+    verts.push(-half, coord, 0,   -half - 0.25, coord, 0);
+
+    // Label every decimFactor-th major tick
+    if (k % decimFactor === 0) {
+      const label = parseFloat(coord.toFixed(2)).toString();
+      const sx = makeLabelSprite(label, planeData.color);
+      sx.position.set(coord, -half - 0.45, 0);
+      scaleGroup.add(sx);
+      const sy = makeLabelSprite(label, planeData.color);
+      sy.position.set(-half - 0.45, coord, 0);
+      scaleGroup.add(sy);
+    }
+
+    // Minor tick at cell center between this and next major tick
+    if (k < totalMajor - 1) {
+      const mid = parseFloat((coord + res / 2).toFixed(6));
+      verts.push(mid, -half, 0,   mid, -half - 0.12, 0);
+      verts.push(-half, mid, 0,   -half - 0.12, mid, 0);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  const mat = new THREE.LineBasicMaterial({ color: tickColor, transparent: true, opacity: 0.8 });
+  scaleGroup.add(new THREE.LineSegments(geo, mat));
+
+  return scaleGroup;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -208,6 +274,20 @@ export function setGridResolution(planeId, resolution) {
   newGrid.rotation.x     = Math.PI / 2;
   newGrid.userData.isGrid = true;
   group.add(newGrid);
+
+  // Rebuild scale ruler to match new resolution
+  const oldScale = group.children.find(c => c.userData.isScale);
+  if (oldScale) {
+    group.remove(oldScale);
+    oldScale.traverse(child => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
+    });
+  }
+  group.add(buildScaleGroup(plane));
 }
 
 export function deletePlane(planeId) {
