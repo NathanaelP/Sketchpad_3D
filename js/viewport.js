@@ -34,6 +34,7 @@ export function initViewport(canvasElement) {
   controls.panSpeed = 0.8;
   controls.touches.ONE = THREE.TOUCH.ROTATE;
   controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
+  controls.enabled = false; // disabled until user selects the Orbit tool
 
   // Resize handler — ResizeObserver catches mobile address-bar changes too
   const resizeObserver = new ResizeObserver(() => {

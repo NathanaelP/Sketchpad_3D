@@ -533,7 +533,6 @@ function handleSelectPointerDown(e) {
       };
       drawState = SELECT_HANDLE_DRAGGING;
       renderer.domElement.setPointerCapture(e.pointerId);
-      getControls().enabled = false;
       return;
     }
   }
@@ -576,7 +575,6 @@ function handleSelectPointerUp(e) {
     saveCb?.();
   }
 
-  getControls().enabled = true;
   dragState = null;
   drawState = SELECT_IDLE;
 
@@ -814,13 +812,13 @@ export function setActiveTool(toolName) {
   // Always hide snap indicator when switching tools
   hideSnapIndicator();
 
-  // Disable orbit controls while freehand is active so drags draw, not orbit
+  // Orbit controls only active when the Orbit tool is selected
   const controls = getControls();
-  if (controls) controls.enabled = (toolName !== 'freehand');
+  if (controls) controls.enabled = (toolName === 'orbit');
 
   // CSS cursor hint
   if (renderer) {
-    renderer.domElement.classList.remove('tool-line', 'tool-freehand', 'tool-select', 'tool-erase');
+    renderer.domElement.classList.remove('tool-line', 'tool-freehand', 'tool-select', 'tool-erase', 'tool-orbit');
     renderer.domElement.classList.add(`tool-${toolName}`);
   }
 }
