@@ -162,7 +162,7 @@ function renderPlaneRow(plane, canDelete) {
   const gridSnapBtn = document.createElement('button');
   gridSnapBtn.className = 'vis-btn' + (plane.gridSnap === false ? ' hidden' : '');
   gridSnapBtn.title     = 'Toggle grid snapping';
-  gridSnapBtn.textContent = '#';
+  gridSnapBtn.innerHTML = '&#x229E;'; // ⊞ — visually clear grid icon
   gridSnapBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     const nowEnabled = plane.gridSnap === false;

@@ -448,19 +448,9 @@ html, body {
 }
 
 /* ── Desktop: panel pushes canvas ── */
+/* Panel open/close is handled by the global .open class rules (same as mobile).   */
+/* initUI adds .open to both #side-panel and #panel-tab on desktop startup.        */
 @media (min-width: 900px) {
-  #side-panel {
-    transform: translateX(0);
-  }
-
-  #panel-tab {
-    left: var(--panel-width);
-  }
-
-  #panel-tab.closed {
-    left: 0;
-  }
-
   #app {
     padding-left: var(--panel-width);
     transition: padding-left 0.25s ease;
