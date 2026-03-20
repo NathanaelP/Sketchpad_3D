@@ -233,20 +233,30 @@ html, body {
   padding: 4px 0 4px 22px;
 }
 
-.grid-res-select {
+.grid-res-btns {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+}
+
+.grid-res-btn {
   flex: 1;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text-primary, #e0e0e0);
   font-size: 11px;
   border-radius: 4px;
-  padding: 3px 6px;
+  padding: 5px 2px;
   cursor: pointer;
+  text-align: center;
+  min-width: 0;
+  touch-action: manipulation;
 }
 
-.grid-res-select:focus {
-  outline: none;
-  border-color: rgba(79, 195, 247, 0.5);
+.grid-res-btn.active {
+  background: rgba(79, 195, 247, 0.25);
+  border-color: rgba(79, 195, 247, 0.6);
+  color: #4FC3F7;
 }
 
 .plane-row:hover {
