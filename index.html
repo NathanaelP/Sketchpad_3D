@@ -73,11 +73,21 @@
     <div id="panel-tab" title="Toggle panel">&#9664;</div>
 
     <div id="coord-bar">
-      <span class="coord-label">X</span>
-      <input type="number" id="coord-x" class="coord-input" step="0.25" />
-      <span class="coord-label">Y</span>
-      <input type="number" id="coord-y" class="coord-input" step="0.25" />
-      <button id="coord-go" title="Place endpoint (Enter)">&#x2192;</button>
+      <div class="coord-row" id="coord-row-start">
+        <span class="coord-row-label">Start</span>
+        <span class="coord-label">X</span>
+        <input type="number" id="coord-start-x" class="coord-input" step="0.25" />
+        <span class="coord-label">Y</span>
+        <input type="number" id="coord-start-y" class="coord-input" step="0.25" />
+      </div>
+      <div class="coord-row" id="coord-row-end">
+        <span class="coord-row-label">End</span>
+        <span class="coord-label">X</span>
+        <input type="number" id="coord-end-x" class="coord-input" step="0.25" />
+        <span class="coord-label">Y</span>
+        <input type="number" id="coord-end-y" class="coord-input" step="0.25" />
+      </div>
+      <button id="coord-go" title="Commit line (Enter)">&#x2192;</button>
     </div>
 
     <canvas id="viewport-canvas"></canvas>
