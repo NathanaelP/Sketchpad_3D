@@ -197,6 +197,20 @@ function fillCoordEnd(worldPt, plane) {
   if (document.activeElement !== ey) ey.value = local.y.toFixed(2);
 }
 
+function fillCoordPolar(worldPt, plane) {
+  const lEl = document.getElementById('coord-length');
+  const aEl = document.getElementById('coord-polar-angle');
+  if (!lEl || !aEl || !startPoint) return;
+  const s  = worldToPlaneLocal(startPoint, plane);
+  const e  = worldToPlaneLocal(worldPt, plane);
+  const dx = e.x - s.x, dy = e.y - s.y;
+  const L  = Math.sqrt(dx * dx + dy * dy);
+  let ang  = Math.atan2(dy, dx) * 180 / Math.PI;
+  if (ang < 0) ang += 360;
+  if (document.activeElement !== lEl) lEl.value = L.toFixed(2);
+  if (document.activeElement !== aEl) aEl.value = ang.toFixed(1);
+}
+
 // Show bar with only the Start row (STATE_IDLE)
 function showCoordBarForIdle() {
   hideCoordBar();
@@ -207,12 +221,21 @@ function showCoordBarForSecond(_startWorldPt, _plane) {
   const bar      = document.getElementById('coord-bar');
   const startRow = document.getElementById('coord-row-start');
   const endRow   = document.getElementById('coord-row-end');
+  const polarRow = document.getElementById('coord-row-polar');
   const angleRow = document.getElementById('coord-row-angle');
   const goBtn    = document.getElementById('coord-go');
   if (!bar || !endRow) return;
   if (startRow)  startRow.style.display  = 'none';
   if (angleRow)  angleRow.style.display  = 'none';
   if (goBtn)     goBtn.style.display     = '';
+  // Show and clear polar row
+  if (polarRow) {
+    polarRow.style.display = 'flex';
+    const lEl = document.getElementById('coord-length');
+    const aEl = document.getElementById('coord-polar-angle');
+    if (lEl) lEl.value = '';
+    if (aEl) aEl.value = '';
+  }
   endRow.style.display = 'flex';
   bar.style.display    = 'flex';
 }
@@ -276,6 +299,7 @@ function applyAngleToStroke(newAngleDeg, pivot, stroke, plane) {
 function showCoordBarForSelect(stroke, plane) {
   const bar      = document.getElementById('coord-bar');
   const endRow   = document.getElementById('coord-row-end');
+  const polarRow = document.getElementById('coord-row-polar');
   const angleRow = document.getElementById('coord-row-angle');
   const goBtn    = document.getElementById('coord-go');
   if (!bar || !endRow || !angleRow) return;
@@ -284,6 +308,7 @@ function showCoordBarForSelect(stroke, plane) {
   fillCoordAngle(stroke, plane);
   endRow.style.display   = 'flex';
   angleRow.style.display = 'flex';
+  if (polarRow) polarRow.style.display = 'none';
   if (goBtn) goBtn.style.display = 'none';
   bar.style.display = 'flex';
   selectEditOldPoints = null;
@@ -386,6 +411,7 @@ function initCoordBar() {
     if (!isNaN(elx) && !isNaN(ely)) {
       const ep = planeLocalToWorld(elx, ely, plane);
       updateLinePreview(startPoint, ep, plane.color);
+      fillCoordPolar(ep, plane);
     }
   }
 
@@ -448,6 +474,54 @@ function initCoordBar() {
       if (e.key === 'Enter') { e.preventDefault(); commitSelectEdit(); }
     });
   }
+
+  // ── Polar input handlers ────────────────────────────────────────────────────
+  function onPolarCoordInput() {
+    if (drawState !== STATE_AWAITING_SECOND || !startPoint) return;
+    const plane = getActivePlaneFn();
+    if (!plane) return;
+    const lEl = document.getElementById('coord-length');
+    const aEl = document.getElementById('coord-polar-angle');
+    const L   = parseFloat(lEl?.value);
+    const ang = parseFloat(aEl?.value);
+    if (isNaN(L) || isNaN(ang)) return;
+    const s   = worldToPlaneLocal(startPoint, plane);
+    const rad = ang * Math.PI / 180;
+    const ep  = planeLocalToWorld(s.x + L * Math.cos(rad), s.y + L * Math.sin(rad), plane);
+    updateLinePreview(startPoint, ep, plane.color);
+    // Sync X/Y fields
+    const local = worldToPlaneLocal(ep, plane);
+    if (document.activeElement !== ex) ex.value = local.x.toFixed(2);
+    if (document.activeElement !== ey) ey.value = local.y.toFixed(2);
+  }
+
+  function commitFromPolarBar() {
+    const plane = getActivePlaneFn();
+    if (!plane || drawState !== STATE_AWAITING_SECOND || !startPoint) return;
+    const lEl  = document.getElementById('coord-length');
+    const paEl = document.getElementById('coord-polar-angle');
+    const L    = parseFloat(lEl?.value);
+    const ang  = parseFloat(paEl?.value);
+    if (isNaN(L) || isNaN(ang)) return;
+    const s   = worldToPlaneLocal(startPoint, plane);
+    const rad = ang * Math.PI / 180;
+    const ep  = planeLocalToWorld(s.x + L * Math.cos(rad), s.y + L * Math.sin(rad), plane);
+    commitLine(startPoint, ep, plane, startSnapTarget, null);
+    startSnapTarget = null;
+    hideSnapIndicator();
+    removeLinePreview();
+    hideDimensionLabel();
+    hideCoordBar();
+    cancelCurrentStroke();
+  }
+
+  const lEl  = document.getElementById('coord-length');
+  const paEl = document.getElementById('coord-polar-angle');
+  if (lEl)  lEl.addEventListener('input',  onPolarCoordInput);
+  if (paEl) paEl.addEventListener('input', onPolarCoordInput);
+  const onPolarEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); commitFromPolarBar(); } };
+  if (lEl)  lEl.addEventListener('keydown',  onPolarEnter);
+  if (paEl) paEl.addEventListener('keydown', onPolarEnter);
 
   // Prevent canvas pointer events while interacting with the bar
   const bar = document.getElementById('coord-bar');
@@ -529,6 +603,7 @@ function onPointerMove(e) {
     updateLinePreview(startPoint, endPt, plane.color);
     showDimensionLabel(e.clientX, e.clientY, startPoint, endPt, plane);
     fillCoordEnd(endPt, plane);
+    fillCoordPolar(endPt, plane);
 
   } else if (activeTool === 'select' && drawState === SELECT_HANDLE_DRAGGING) {
     handleSelectDrag(e);
