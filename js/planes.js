@@ -67,6 +67,7 @@ function createPlaneGroup(planeData) {
   planeData.meshRef     = mesh;
 
   group.add(buildScaleGroup(planeData));
+  createMoveGizmo(planeData);
 }
 
 // ─── Scale ruler helpers ───────────────────────────────────────────────────────
@@ -229,7 +230,8 @@ export function setPlaneVisibility(planeId, visible) {
   const plane = planes.find(p => p.id === planeId);
   if (!plane) return;
   plane.visible = visible;
-  if (plane.threeObject) plane.threeObject.visible = visible;
+  if (plane.threeObject)    plane.threeObject.visible    = visible;
+  if (plane.moveGizmoGroup) plane.moveGizmoGroup.visible = visible;
 }
 
 export function setLinesVisible(planeId, visible) {
@@ -246,6 +248,7 @@ export function renamePlane(planeId, newName) {
 // Called before restoring an imported sketch.
 export function clearAllPlanes() {
   planes.forEach(plane => {
+    destroyMoveGizmo(plane);
     if (plane.threeObject) {
       sceneRef.remove(plane.threeObject);
       plane.threeObject.traverse(child => {
@@ -298,11 +301,74 @@ export function setGridSnap(planeId, enabled) {
   if (plane) plane.gridSnap = enabled;
 }
 
+// ─── Move gizmo ───────────────────────────────────────────────────────────────
+
+function makeArrowMesh(color, length) {
+  const mat      = new THREE.MeshBasicMaterial({ color, depthTest: false, depthWrite: false });
+  const shaftLen = length * 0.72;
+  const headLen  = length * 0.28;
+  const shaft    = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, shaftLen, 8), mat);
+  shaft.position.y = shaftLen / 2;
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.09, headLen, 8), mat.clone());
+  head.position.y = shaftLen + headLen / 2;
+  const group = new THREE.Group();
+  group.add(shaft);
+  group.add(head);
+  group.renderOrder = 100;
+  return { group, meshes: [shaft, head] };
+}
+
+function createMoveGizmo(planeData) {
+  const ARROW_LEN = 1.2;
+  const axes = [
+    { vec: new THREE.Vector3(1, 0, 0), color: 0xff3333, name: 'x' },
+    { vec: new THREE.Vector3(0, 1, 0), color: 0x33cc33, name: 'y' },
+    { vec: new THREE.Vector3(0, 0, 1), color: 0x3399ff, name: 'z' },
+  ];
+
+  const gizmoGroup = new THREE.Group();
+  gizmoGroup.position.set(planeData.position.x, planeData.position.y, planeData.position.z);
+  gizmoGroup.renderOrder = 100;
+
+  const meshes = [];
+  const up = new THREE.Vector3(0, 1, 0);
+  axes.forEach(({ vec, color }) => {
+    const { group, meshes: arrowMeshes } = makeArrowMesh(color, ARROW_LEN);
+    // Rotate so the arrow points along vec (CylinderGeometry default is along Y)
+    if (Math.abs(up.dot(vec)) < 0.9999) {
+      group.quaternion.setFromUnitVectors(up, vec);
+    }
+    gizmoGroup.add(group);
+    arrowMeshes.forEach(m => {
+      m.userData.gizmoAxis    = vec;
+      m.userData.gizmoPlaneId = planeData.id;
+      meshes.push(m);
+    });
+  });
+
+  sceneRef.add(gizmoGroup);
+  planeData.moveGizmoGroup  = gizmoGroup;
+  planeData.moveGizmoMeshes = meshes;
+}
+
+function destroyMoveGizmo(planeData) {
+  if (!planeData.moveGizmoGroup) return;
+  sceneRef.remove(planeData.moveGizmoGroup);
+  planeData.moveGizmoGroup.traverse(child => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) child.material.dispose();
+  });
+  planeData.moveGizmoGroup  = null;
+  planeData.moveGizmoMeshes = null;
+}
+
 export function deletePlane(planeId) {
   if (planes.length <= 1) return; // never delete the last plane
   const idx = planes.findIndex(p => p.id === planeId);
   if (idx === -1) return;
   const plane = planes[idx];
+
+  destroyMoveGizmo(plane);
 
   // Remove Three.js objects and dispose
   if (plane.threeObject) {
