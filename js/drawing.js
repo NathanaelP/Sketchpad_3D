@@ -950,6 +950,14 @@ function handleGizmoDrag(e) {
   plane.position = { x: newPos.x, y: newPos.y, z: newPos.z };
   if (plane.moveGizmoGroup) plane.moveGizmoGroup.position.copy(newPos);
 
+  // Live-update side panel position inputs (skip any field that is focused)
+  const ppx = document.getElementById('plane-pos-x');
+  const ppy = document.getElementById('plane-pos-y');
+  const ppz = document.getElementById('plane-pos-z');
+  if (ppx && document.activeElement !== ppx) ppx.value = newPos.x.toFixed(2);
+  if (ppy && document.activeElement !== ppy) ppy.value = newPos.y.toFixed(2);
+  if (ppz && document.activeElement !== ppz) ppz.value = newPos.z.toFixed(2);
+
   // Translate all strokes on this plane so they co-move
   strokes.filter(s => s.planeId === plane.id).forEach(stroke => {
     stroke.points.forEach(pt => { pt.x += dp.x; pt.y += dp.y; pt.z += dp.z; });
@@ -1168,6 +1176,16 @@ function pushHistory(entry) {
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
+export function moveStrokesToNewPlanePosition(planeId, dx, dy, dz) {
+  strokes.filter(s => s.planeId === planeId).forEach(stroke => {
+    stroke.points.forEach(pt => { pt.x += dx; pt.y += dy; pt.z += dz; });
+    stroke.handleGroupRef?.children.forEach(h => {
+      h.position.x += dx; h.position.y += dy; h.position.z += dz;
+    });
+    regenerateStrokeGeometry(stroke);
+  });
+}
+
 export function undoLast() {
   cancelCurrentStroke();
   if (drawState === STATE_FREEHAND_DRAWING) cancelFreehand();

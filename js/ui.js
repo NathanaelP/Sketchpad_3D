@@ -243,6 +243,36 @@ function renderPlaneRow(plane, canDelete) {
     gridRow.addEventListener('pointerdown', e => e.stopPropagation());
     gridRow.addEventListener('click',       e => e.stopPropagation());
     row.appendChild(gridRow);
+
+    // Position row (X/Y/Z inputs)
+    const posRow = document.createElement('div');
+    posRow.className = 'plane-pos-row';
+    [['X', 'plane-pos-x', plane.position?.x ?? 0],
+     ['Y', 'plane-pos-y', plane.position?.y ?? 0],
+     ['Z', 'plane-pos-z', plane.position?.z ?? 0]].forEach(([label, id, val]) => {
+      const lbl = document.createElement('span');
+      lbl.className   = 'plane-pos-label';
+      lbl.textContent = label;
+      const inp = document.createElement('input');
+      inp.type      = 'number';
+      inp.id        = id;
+      inp.className = 'plane-pos-input';
+      inp.step      = '0.5';
+      inp.value     = parseFloat(val).toFixed(2);
+      inp.addEventListener('input', () => {
+        const x = parseFloat(document.getElementById('plane-pos-x')?.value);
+        const y = parseFloat(document.getElementById('plane-pos-y')?.value);
+        const z = parseFloat(document.getElementById('plane-pos-z')?.value);
+        if (!isNaN(x) && !isNaN(y) && !isNaN(z))
+          planesAPI?.setPlanePosition?.(plane.id, x, y, z);
+      });
+      inp.addEventListener('pointerdown', e => e.stopPropagation());
+      posRow.appendChild(lbl);
+      posRow.appendChild(inp);
+    });
+    posRow.addEventListener('pointerdown', e => e.stopPropagation());
+    posRow.addEventListener('click',       e => e.stopPropagation());
+    row.appendChild(posRow);
   }
 
   return row;
