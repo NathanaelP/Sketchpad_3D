@@ -5,7 +5,7 @@ import {
   setPlaneVisibility, setLinesVisible,
   setActivePlane, renamePlane,
   restorePlane, deletePlane, clearAllPlanes,
-  setGridResolution, setGridSnap, setPlanePosition,
+  setGridResolution, setGridSnap, setPlanePosition, setPlaneRotation,
 } from './planes.js';
 import {
   initDrawing, setActiveTool, undoLast,
@@ -90,6 +90,10 @@ window.addEventListener('DOMContentLoaded', () => {
         const { x: ox, y: oy, z: oz } = plane.position;
         setPlanePosition(planeId, x, y, z);
         moveStrokesToNewPlanePosition(planeId, x - ox, y - oy, z - oz);
+        saveCb();
+      },
+      setPlaneRotation: (planeId, rx, ry, rz) => {
+        setPlaneRotation(planeId, rx, ry, rz);
         saveCb();
       },
     },

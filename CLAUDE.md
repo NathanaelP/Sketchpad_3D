@@ -270,8 +270,9 @@ Plane deletion is also not in the undo stack.
 Serialize all planes and strokes to localStorage on every change.
 Key: `sketchpad_autosave`
 
-Saved plane data includes the `orientation` field. Old saves without this field are
-handled by `normalToOrientation(normal)` which infers it from the stored normal vector.
+Saved plane data includes `orientation`, `position`, and `rotation` fields. Old saves
+without these fields are handled with sensible defaults: `normalToOrientation(normal)`
+infers orientation from the stored normal vector; rotation defaults to the preset values.
 
 ### Export
 "Export JSON" button saves the full sketch as a .json file download (Phase 5).
@@ -356,30 +357,43 @@ Each phase should result in something testable on a real device before moving on
 
 ---
 
-### Phase 5 — Polish and PWA
+### Phase 5 — Polish and PWA ✅ COMPLETE
 **Goal:** Installable, shareable, complete feeling app.
 
 - [x] PWA setup: manifest.json, service-worker.js, icons
-- [ ] Export sketch as JSON (download file)
-- [ ] Import sketch from JSON file
-- [ ] Export visible strokes as SVG (flattened 2D)
-- [ ] Smooth UI animations (panel slide, tool transitions)
-- [ ] Dark theme fully polished
-- [ ] Test on iPhone/iPad Safari
-- [ ] Test on desktop Chrome and Firefox
-- [ ] README.md updated with usage instructions
+- [x] Export sketch as JSON (download file)
+- [x] Import sketch from JSON file
+- [x] Export visible strokes as SVG (flattened 2D)
+- [x] Smooth UI animations (panel slide, tool transitions)
+- [x] Dark theme fully polished
+- [x] Test on iPhone/iPad Safari
+- [x] Test on desktop Chrome and Firefox
+- [x] README.md updated with usage instructions
 
-### Phase 6 — Precision Tools and Plane Manipulation
+### Phase 6 — Precision Tools and Plane Manipulation ✅ COMPLETE
 **Goal:** Give designers accurate control over line dimensions and plane positioning.
 
-- [ ] Grid snapping with adjustable resolution (per plane)
-- [ ] Snap-to-grid toggle per plane (in side panel)
-- [ ] Live dimension display while drawing (length + angle shown near cursor)
-- [ ] Coordinate input for line endpoints (type exact X/Y/Z values)
-- [ ] Line length + angle input mode (enter length and angle to place endpoint)
-- [ ] Plane move handle (axis-constrained drag handle on plane)
-- [ ] Plane position shown in side panel (editable X/Y/Z fields)
-- [ ] Plane rotation by preset angles or numeric input
+- [x] Grid snapping with adjustable resolution (per plane)
+- [x] Snap-to-grid toggle per plane (in side panel)
+- [x] Live dimension display while drawing (length + angle shown near cursor)
+- [x] Coordinate input for line endpoints (type exact X/Y/Z values)
+- [x] Line length + angle input mode (enter length and angle to place endpoint)
+- [x] Plane move handle (axis-constrained drag handle on plane)
+- [x] Plane position shown in side panel (editable X/Y/Z fields)
+- [x] Plane rotation by preset angles or numeric input
+
+---
+
+### Phase 7 — Workflow and Editing Power-Ups
+**Goal:** Make complex sketching faster and more expressive — copy, mirror, annotate, and organize.
+
+- [ ] Copy / paste strokes (duplicate within or across planes)
+- [ ] Mirror / reflect tool (flip selected strokes across a plane axis)
+- [ ] Stroke color override (per-stroke color independent of plane color)
+- [ ] Measurement annotations (place a labeled dimension line between two points)
+- [ ] Camera bookmarks (save and restore named viewpoints)
+- [ ] Select-all and multi-stroke selection (tap-drag lasso or Ctrl+A)
+- [ ] Group strokes and move them as a unit
 
 ---
 
@@ -401,15 +415,21 @@ Each phase should result in something testable on a real device before moving on
 
 ## Current Status
 
-**As of 2026-03-19: Phases 1–5 complete. Phase 6 planned (Precision Tools and Plane Manipulation).**
+**As of 2026-03-22: Phases 1–6 complete. Phase 7 planned (Workflow and Editing Power-Ups).**
 
 The app is fully functional for multi-plane 3D sketching on mobile and desktop:
-- Draw straight lines and freehand curves on Front, Top, and Right planes
+- Draw straight lines and freehand curves on Front, Top, Right, or any custom-angle plane
 - Snap to endpoints and lines with visual indicator; toggle snapping on/off
+- Grid snap with adjustable resolution (0.25 / 0.5 / 1.0 / 2.0) per plane, toggleable
 - Select strokes, drag control points to reshape, delete with key or Erase tool
+- Coordinate input bar: type exact X/Y end point while drawing a line (Cartesian or polar L/°)
+- Live dimension label shows length and angle while drawing
 - Adjust line width per-session (1–12px) via side panel slider
-- Add, rename, reorder, and delete planes; toggle grid and stroke visibility per plane
-- All state auto-saved to localStorage; survives page reload
+- Add, rename, and delete planes; toggle grid and stroke visibility per plane
+- Move planes in 3D via axis-constrained gizmo (X/Y/Z arrows in Select mode)
+- Set exact plane position via X/Y/Z fields in side panel; position updates live during gizmo drag
+- Rotate planes to any angle via F/T/R preset buttons or X°/Y°/Z° Euler inputs
+- All state (including position and rotation) auto-saved to localStorage; survives page reload
 - Installable as a PWA (manifest + service worker in place)
 - Export sketch as JSON; import from JSON file; export visible strokes as SVG
 - Smooth UI animations (orientation picker slide); dark theme polished

@@ -273,6 +273,73 @@ function renderPlaneRow(plane, canDelete) {
     posRow.addEventListener('pointerdown', e => e.stopPropagation());
     posRow.addEventListener('click',       e => e.stopPropagation());
     row.appendChild(posRow);
+
+    // Rotation preset row (F / T / R quick-snap buttons)
+    const rotPresetRow = document.createElement('div');
+    rotPresetRow.className = 'plane-rot-row';
+    const rotLabel = document.createElement('span');
+    rotLabel.className   = 'plane-pos-label';
+    rotLabel.textContent = 'Rot';
+    rotPresetRow.appendChild(rotLabel);
+    const ROT_PRESETS = [
+      { label: 'F', rx: 0,             ry: 0,            title: 'Front (XY plane)' },
+      { label: 'T', rx: -Math.PI / 2,  ry: 0,            title: 'Top (XZ plane)'   },
+      { label: 'R', rx: 0,             ry: Math.PI / 2,  title: 'Right (YZ plane)' },
+    ];
+    ROT_PRESETS.forEach(({ label, rx, ry, title }) => {
+      const btn = document.createElement('button');
+      btn.className   = 'plane-rot-preset-btn';
+      btn.textContent = label;
+      btn.title       = title;
+      btn.addEventListener('pointerdown', e => e.stopPropagation());
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        planesAPI?.setPlaneRotation?.(plane.id, rx, ry, 0);
+        const toDeg = r => (r * 180 / Math.PI).toFixed(1);
+        const ix = document.getElementById('plane-rot-x');
+        const iy = document.getElementById('plane-rot-y');
+        const iz = document.getElementById('plane-rot-z');
+        if (ix) ix.value = toDeg(rx);
+        if (iy) iy.value = toDeg(ry);
+        if (iz) iz.value = '0.0';
+      });
+      rotPresetRow.appendChild(btn);
+    });
+    rotPresetRow.addEventListener('pointerdown', e => e.stopPropagation());
+    rotPresetRow.addEventListener('click',       e => e.stopPropagation());
+    row.appendChild(rotPresetRow);
+
+    // Rotation Euler inputs row (X° / Y° / Z°)
+    const rotInputRow = document.createElement('div');
+    rotInputRow.className = 'plane-rot-row';
+    const rot   = plane.rotation || { x: 0, y: 0, z: 0 };
+    const toDeg = r => (r * 180 / Math.PI).toFixed(1);
+    [['X', 'plane-rot-x', toDeg(rot.x)],
+     ['Y', 'plane-rot-y', toDeg(rot.y)],
+     ['Z', 'plane-rot-z', toDeg(rot.z)]].forEach(([label, id, val]) => {
+      const lbl = document.createElement('span');
+      lbl.className   = 'plane-pos-label';
+      lbl.textContent = label + '\u00b0';
+      const inp = document.createElement('input');
+      inp.type      = 'number';
+      inp.id        = id;
+      inp.className = 'plane-rot-input';
+      inp.step      = '1';
+      inp.value     = val;
+      inp.addEventListener('input', () => {
+        const xd = parseFloat(document.getElementById('plane-rot-x')?.value) || 0;
+        const yd = parseFloat(document.getElementById('plane-rot-y')?.value) || 0;
+        const zd = parseFloat(document.getElementById('plane-rot-z')?.value) || 0;
+        const toRad = d => d * Math.PI / 180;
+        planesAPI?.setPlaneRotation?.(plane.id, toRad(xd), toRad(yd), toRad(zd));
+      });
+      inp.addEventListener('pointerdown', e => e.stopPropagation());
+      rotInputRow.appendChild(lbl);
+      rotInputRow.appendChild(inp);
+    });
+    rotInputRow.addEventListener('pointerdown', e => e.stopPropagation());
+    rotInputRow.addEventListener('click',       e => e.stopPropagation());
+    row.appendChild(rotInputRow);
   }
 
   return row;
