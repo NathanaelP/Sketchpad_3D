@@ -5,7 +5,7 @@ import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { simplifyPoints, catmullRomCurve } from './curves.js';
 import { getControls } from './viewport.js';
 import { findEndpointSnap, findLineSnap, snapToGrid } from './snap.js';
-import { getPlaneById } from './planes.js';
+import { getPlaneById, getAllPlanes } from './planes.js';
 
 // ─── State constants ──────────────────────────────────────────────────────────
 const STATE_IDLE              = 'IDLE';
@@ -13,6 +13,7 @@ const STATE_AWAITING_SECOND   = 'AWAITING_SECOND_POINT';
 const STATE_FREEHAND_DRAWING  = 'FREEHAND_DRAWING';
 const SELECT_IDLE             = 'SELECT_IDLE';
 const SELECT_HANDLE_DRAGGING  = 'SELECT_HANDLE_DRAGGING';
+const PLANE_DRAG              = 'PLANE_DRAG';
 
 const TAP_MOVE_THRESHOLD     = 12;   // px — travel beyond this = orbit, not tap
 const LINE_RAYCAST_THRESHOLD = 0.15; // world units
@@ -47,6 +48,7 @@ let selectedStroke    = null;
 let dragState         = null; // { stroke, pointIndex, handleMesh, oldPoint }
 let selectEditOldPoints = null; // snapshot of stroke.points before coord bar edits (for undo)
 let currentPivot      = 'start'; // 'start' | 'center' | 'end'
+let planeDragState    = null; // { plane, axis, helperPlane, startHitPt, startPos }
 
 // Snap indicator
 let snapIndicatorMesh = null; // THREE.Mesh — lazy-created, reused
@@ -564,7 +566,7 @@ function onPointerDown(e) {
     hideSnapIndicator();
 
   } else if (activeTool === 'select') {
-    handleSelectPointerDown(e);
+    if (!handleGizmoPointerDown(e)) handleSelectPointerDown(e);
   }
 }
 
@@ -604,6 +606,9 @@ function onPointerMove(e) {
     showDimensionLabel(e.clientX, e.clientY, startPoint, endPt, plane);
     fillCoordEnd(endPt, plane);
     fillCoordPolar(endPt, plane);
+
+  } else if (drawState === PLANE_DRAG) {
+    handleGizmoDrag(e);
 
   } else if (activeTool === 'select' && drawState === SELECT_HANDLE_DRAGGING) {
     handleSelectDrag(e);
@@ -895,6 +900,66 @@ function hideSnapIndicator() {
   if (snapIndicatorMesh) snapIndicatorMesh.visible = false;
 }
 
+// ─── Move gizmo interaction ───────────────────────────────────────────────────
+function handleGizmoPointerDown(e) {
+  setNDC(e);
+  const gizmoMeshes = getAllPlanes().flatMap(p => p.moveGizmoMeshes ?? []);
+  if (!gizmoMeshes.length) return false;
+  const hits = raycaster.intersectObjects(gizmoMeshes, false);
+  if (!hits.length) return false;
+
+  const hit     = hits[0];
+  const axis    = hit.object.userData.gizmoAxis;    // THREE.Vector3
+  const planeId = hit.object.userData.gizmoPlaneId;
+  const plane   = getPlaneById(planeId);
+  if (!plane || !axis) return false;
+
+  // Helper plane: contains drag axis, best-facing the camera
+  const camDir = camera.getWorldDirection(new THREE.Vector3());
+  const perp   = new THREE.Vector3().crossVectors(axis, camDir);
+  const hNorm  = new THREE.Vector3().crossVectors(perp, axis).normalize();
+  if (hNorm.lengthSq() < 0.001) hNorm.copy(camDir); // axis parallel to camera → fallback
+  const helperPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(hNorm, hit.point);
+
+  deselectAll();
+  planeDragState = {
+    plane,
+    axis:       axis.clone(),
+    helperPlane,
+    startHitPt: hit.point.clone(),
+    startPos:   new THREE.Vector3(plane.position.x, plane.position.y, plane.position.z),
+  };
+  drawState = PLANE_DRAG;
+  getControls().enabled = false;
+  renderer.domElement.setPointerCapture(e.pointerId);
+  return true;
+}
+
+function handleGizmoDrag(e) {
+  if (!planeDragState) return;
+  const { plane, axis, helperPlane, startHitPt, startPos } = planeDragState;
+  setNDC(e);
+  const hitPt = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(helperPlane, hitPt)) return;
+
+  const delta  = hitPt.clone().sub(startHitPt).dot(axis);
+  const newPos = startPos.clone().addScaledVector(axis, delta);
+  const dp     = newPos.clone().sub(new THREE.Vector3(plane.position.x, plane.position.y, plane.position.z));
+
+  plane.threeObject.position.copy(newPos);
+  plane.position = { x: newPos.x, y: newPos.y, z: newPos.z };
+  if (plane.moveGizmoGroup) plane.moveGizmoGroup.position.copy(newPos);
+
+  // Translate all strokes on this plane so they co-move
+  strokes.filter(s => s.planeId === plane.id).forEach(stroke => {
+    stroke.points.forEach(pt => { pt.x += dp.x; pt.y += dp.y; pt.z += dp.z; });
+    stroke.handleGroupRef?.children.forEach(h => {
+      h.position.x += dp.x; h.position.y += dp.y; h.position.z += dp.z;
+    });
+    regenerateStrokeGeometry(stroke);
+  });
+}
+
 // ─── Select tool ──────────────────────────────────────────────────────────────
 function handleSelectPointerDown(e) {
   setNDC(e);
@@ -951,6 +1016,13 @@ function handleSelectDrag(e) {
 }
 
 function handleSelectPointerUp(e) {
+  if (drawState === PLANE_DRAG) {
+    drawState      = SELECT_IDLE;
+    planeDragState = null;
+    getControls().enabled = true;
+    saveCb?.();
+    return;
+  }
   if (drawState !== SELECT_HANDLE_DRAGGING || !dragState) return;
 
   const { stroke, pointIndex, oldPoint } = dragState;
