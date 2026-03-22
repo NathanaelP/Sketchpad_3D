@@ -1,18 +1,18 @@
 import { initViewport, getScene, getCamera, getRenderer, startRenderLoop } from './viewport.js';
 import {
   initPlanes, createDefaultPlane, addPlane,
-  getActivePlane, getAllPlanes,
+  getActivePlane, getAllPlanes, getPlaneById,
   setPlaneVisibility, setLinesVisible,
   setActivePlane, renamePlane,
   restorePlane, deletePlane, clearAllPlanes,
-  setGridResolution, setGridSnap,
+  setGridResolution, setGridSnap, setPlanePosition,
 } from './planes.js';
 import {
   initDrawing, setActiveTool, undoLast,
   setPlaneStrokesVisible, getStrokes, restoreStroke,
   setSnapEnabled, isSnapEnabled,
   setLineWidth, getLineWidth,
-  deleteStrokesByPlane,
+  deleteStrokesByPlane, moveStrokesToNewPlanePosition,
 } from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
 import { save, load, exportJSON, importJSON } from './storage.js';
@@ -82,6 +82,14 @@ window.addEventListener('DOMContentLoaded', () => {
       },
       setGridSnap: (id, enabled) => {
         setGridSnap(id, enabled);
+        saveCb();
+      },
+      setPlanePosition: (planeId, x, y, z) => {
+        const plane = getPlaneById(planeId);
+        if (!plane) return;
+        const { x: ox, y: oy, z: oz } = plane.position;
+        setPlanePosition(planeId, x, y, z);
+        moveStrokesToNewPlanePosition(planeId, x - ox, y - oy, z - oz);
         saveCb();
       },
     },

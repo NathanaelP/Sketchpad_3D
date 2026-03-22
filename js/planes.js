@@ -301,6 +301,14 @@ export function setGridSnap(planeId, enabled) {
   if (plane) plane.gridSnap = enabled;
 }
 
+export function setPlanePosition(planeId, x, y, z) {
+  const plane = planes.find(p => p.id === planeId);
+  if (!plane) return;
+  plane.position = { x, y, z };
+  if (plane.threeObject)    plane.threeObject.position.set(x, y, z);
+  if (plane.moveGizmoGroup) plane.moveGizmoGroup.position.set(x, y, z);
+}
+
 // ─── Move gizmo ───────────────────────────────────────────────────────────────
 
 function makeArrowMesh(color, length) {
