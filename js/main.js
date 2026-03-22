@@ -13,6 +13,7 @@ import {
   setSnapEnabled, isSnapEnabled,
   setLineWidth, getLineWidth,
   deleteStrokesByPlane, moveStrokesToNewPlanePosition,
+  copySelectedStroke, pasteStroke,
 } from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
 import { save, load, exportJSON, importJSON } from './storage.js';
@@ -136,7 +137,24 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 9. File I/O — export JSON, import JSON, export SVG
+  // 9. Duplicate button + keyboard copy/paste shortcuts
+  const dupBtn = document.getElementById('duplicate-btn');
+  if (dupBtn) {
+    dupBtn.addEventListener('click', () => {
+      copySelectedStroke();
+      if (pasteStroke()) updatePlaneList(getAllPlanes());
+    });
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key === 'c') { e.preventDefault(); copySelectedStroke(); }
+    if (mod && e.key === 'v') { e.preventDefault(); if (pasteStroke()) updatePlaneList(getAllPlanes()); }
+    if (mod && e.key === 'd') { e.preventDefault(); copySelectedStroke(); if (pasteStroke()) updatePlaneList(getAllPlanes()); }
+  });
+
+  // 10. File I/O — export JSON, import JSON, export SVG
   function downloadFile(content, filename, mime) {
     const a = document.createElement('a');
     a.href     = URL.createObjectURL(new Blob([content], { type: mime }));
@@ -191,13 +209,13 @@ window.addEventListener('DOMContentLoaded', () => {
     reader.readAsText(file);
   });
 
-  // 10. View orientation gizmo
+  // 11. View orientation gizmo
   initViewGizmo();
 
-  // 11. Render loop — must start last
+  // 12. Render loop — must start last
   startRenderLoop();
 
-  // 11. Service worker registration
+  // 13. Service worker registration
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/service-worker.js').catch(() => {
