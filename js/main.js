@@ -17,6 +17,7 @@ import {
 import { initUI, updatePlaneList } from './ui.js';
 import { save, load, exportJSON, importJSON } from './storage.js';
 import { exportSVG } from './svg-export.js';
+import { initViewGizmo } from './view-gizmo.js';
 
 window.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('viewport-canvas');
@@ -190,7 +191,10 @@ window.addEventListener('DOMContentLoaded', () => {
     reader.readAsText(file);
   });
 
-  // 10. Render loop — must start last
+  // 10. View orientation gizmo
+  initViewGizmo();
+
+  // 11. Render loop — must start last
   startRenderLoop();
 
   // 11. Service worker registration
