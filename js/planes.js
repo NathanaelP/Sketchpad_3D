@@ -38,7 +38,11 @@ function createPlaneGroup(planeData) {
   group.position.set(planeData.position.x, planeData.position.y, planeData.position.z);
 
   const orient = ORIENTATION_PRESETS[planeData.orientation] || ORIENTATION_PRESETS.front;
-  group.rotation.set(orient.rotX, orient.rotY, 0);
+  // Initialize rotation from stored value or from the preset
+  if (!planeData.rotation) {
+    planeData.rotation = { x: orient.rotX, y: orient.rotY, z: 0 };
+  }
+  group.rotation.set(planeData.rotation.x, planeData.rotation.y, planeData.rotation.z);
 
   // Near-transparent mesh used as raycaster target (XY in group-local space)
   const geo = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE);
@@ -147,6 +151,7 @@ export function createDefaultPlane() {
     orientation:    'front',
     normal:         { x: 0, y: 0, z: 1 },
     position:       { x: 0, y: 0, z: 0 },
+    rotation:       { x: 0, y: 0, z: 0 },
     gridResolution: 0.5,
     gridSnap:       true,
     threeObject:    null,
@@ -171,6 +176,7 @@ export function addPlane(orientationName = 'front') {
     orientation:    orientationName,
     normal:         { ...orient.normal },
     position:       { x: 0, y: 0, z: 0 },
+    rotation:       { x: orient.rotX, y: orient.rotY, z: 0 },
     gridResolution: 0.5,
     gridSnap:       true,
     threeObject:    null,
@@ -198,6 +204,7 @@ export function restorePlane(savedData) {
     orientation,
     normal:         { ...orient.normal },
     position:       { ...(savedData.position || { x: 0, y: 0, z: 0 }) },
+    rotation:       savedData.rotation || { x: orient.rotX, y: orient.rotY, z: 0 },
     gridResolution: savedData.gridResolution ?? 0.5,
     gridSnap:       savedData.gridSnap ?? true,
     threeObject:    null,
@@ -307,6 +314,26 @@ export function setPlanePosition(planeId, x, y, z) {
   plane.position = { x, y, z };
   if (plane.threeObject)    plane.threeObject.position.set(x, y, z);
   if (plane.moveGizmoGroup) plane.moveGizmoGroup.position.set(x, y, z);
+}
+
+function inferOrientation(rx, ry, rz) {
+  for (const [key, p] of Object.entries(ORIENTATION_PRESETS)) {
+    if (Math.abs(p.rotX - rx) < 1e-4 && Math.abs(p.rotY - ry) < 1e-4 && Math.abs(rz) < 1e-4)
+      return key;
+  }
+  return 'custom';
+}
+
+export function setPlaneRotation(planeId, rx, ry, rz) {
+  const plane = planes.find(p => p.id === planeId);
+  if (!plane || !plane.threeObject) return;
+  plane.rotation    = { x: rx, y: ry, z: rz };
+  plane.orientation = inferOrientation(rx, ry, rz);
+  plane.threeObject.rotation.set(rx, ry, rz);
+  // Recompute world normal from the new rotation
+  const quat = new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, 'XYZ'));
+  const n    = new THREE.Vector3(0, 0, 1).applyQuaternion(quat);
+  plane.normal = { x: n.x, y: n.y, z: n.z };
 }
 
 // ─── Move gizmo ───────────────────────────────────────────────────────────────

@@ -267,6 +267,49 @@ html, body {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.plane-rot-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 22px;
+}
+
+.plane-rot-preset-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+  font-size: 11px;
+  border-radius: 4px;
+  padding: 4px 2px;
+  cursor: pointer;
+  text-align: center;
+  touch-action: manipulation;
+}
+.plane-rot-preset-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.plane-rot-input {
+  width: 48px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 3px 4px;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.plane-rot-input::-webkit-outer-spin-button,
+.plane-rot-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.plane-rot-input:focus {
+  outline: none;
+  border-color: rgba(79, 195, 247, 0.6);
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .grid-res-btns {
   display: flex;
   flex: 1;
