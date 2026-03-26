@@ -136,6 +136,12 @@ html, body {
   background: rgba(255, 255, 255, 0.06);
 }
 
+#duplicate-btn {
+  width: auto;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
 #duplicate-btn:disabled {
   opacity: 0.3;
   cursor: default;
@@ -658,6 +664,6 @@ html, body {
   .tool-btn           { padding: 4px 8px; font-size: 12px; }
   #undo-btn,
   #menu-btn,
-  #snap-btn,
-  #duplicate-btn      { width: 32px; height: 32px; font-size: 16px; }
+  #snap-btn           { width: 32px; height: 32px; font-size: 16px; }
+  #duplicate-btn      { width: auto; padding: 0 8px; height: 32px; font-size: 12px; }
 }
