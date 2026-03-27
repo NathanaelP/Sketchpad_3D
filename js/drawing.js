@@ -60,6 +60,7 @@ const MAX_HISTORY = 50;
 
 let snapEnabled = true;
 let lineWidth   = 3; // px — applied to all new and existing strokes
+let clipboard   = null; // { type, points, sourcePlaneId }
 
 // Snap helpers — return null when snapping is disabled
 function snapEndpoint(sx, sy) {
@@ -1361,4 +1362,63 @@ export function restoreStroke(strokeData) {
   handleGroup.children.forEach(mesh => { mesh.userData.strokeId = stroke.id; });
 
   strokes.push(stroke);
+}
+
+export function copySelectedStroke() {
+  if (!selectedStroke) return false;
+  clipboard = {
+    type:          selectedStroke.type,
+    points:        selectedStroke.points.map(p => ({ x: p.x, y: p.y, z: p.z })),
+    sourcePlaneId: selectedStroke.planeId,
+  };
+  return true;
+}
+
+export function pasteStroke() {
+  if (!clipboard) return false;
+  const targetPlane = getActivePlaneFn();
+  if (!targetPlane) return false;
+
+  const OFFSET = 0.25;
+  const sourcePlane = getPlaneById(clipboard.sourcePlaneId);
+
+  const newPoints = clipboard.points.map(wp => {
+    const v = new THREE.Vector3(wp.x, wp.y, wp.z);
+    if (sourcePlane) sourcePlane.threeObject.worldToLocal(v);
+    v.x += OFFSET;
+    v.y += OFFSET;
+    v.z = 0;
+    targetPlane.threeObject.localToWorld(v);
+    return { x: v.x, y: v.y, z: v.z };
+  });
+
+  const strokeId = 'stroke_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+  const stroke = {
+    id:              strokeId,
+    planeId:         targetPlane.id,
+    type:            clipboard.type,
+    color:           targetPlane.color,
+    selected:        false,
+    points:          newPoints,
+    snapConnections: [],
+  };
+
+  stroke.threeObject    = new THREE.Group();
+  stroke.lineRef        = buildLineObject(stroke.points, stroke.color);
+  stroke.handleGroupRef = buildHandleGroup(stroke.points, stroke.color);
+  stroke.handleGroupRef.visible = false;
+  stroke.handleGroupRef.children.forEach(m => { m.userData.strokeId = strokeId; });
+  stroke.threeObject.add(stroke.lineRef);
+  stroke.threeObject.add(stroke.handleGroupRef);
+  scene.add(stroke.threeObject);
+  strokes.push(stroke);
+  pushHistory({ action: 'add_stroke', strokeId });
+
+  if (activeTool === 'select') {
+    deselectAll();
+    selectStroke(stroke);
+  }
+
+  saveCb();
+  return true;
 }

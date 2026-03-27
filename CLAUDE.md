@@ -388,7 +388,7 @@ Each phase should result in something testable on a real device before moving on
 **Goal:** Make complex sketching faster and more expressive — copy, mirror, annotate, and organize.
 
 - [x] View orientation gizmo — axis widget (top-right corner) shows live camera direction; tap axis dot to snap camera to Front/Back/Left/Right/Top/Bottom
-- [ ] Copy / paste strokes (duplicate within or across planes)
+- [x] Copy / paste strokes (duplicate within or across planes)
 - [ ] Mirror / reflect tool (flip selected strokes across a plane axis)
 - [ ] Stroke color override (per-stroke color independent of plane color)
 - [ ] Measurement annotations (place a labeled dimension line between two points)

@@ -111,7 +111,8 @@ html, body {
 
 #undo-btn,
 #menu-btn,
-#snap-btn {
+#snap-btn,
+#duplicate-btn {
   background: transparent;
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
@@ -128,10 +129,22 @@ html, body {
 
 #undo-btn:hover,
 #menu-btn:hover,
-#snap-btn:hover {
+#snap-btn:hover,
+#duplicate-btn:hover {
   color: var(--text-primary);
   border-color: rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.06);
+}
+
+#duplicate-btn {
+  width: auto;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+#duplicate-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 #snap-btn.active {
@@ -652,4 +665,5 @@ html, body {
   #undo-btn,
   #menu-btn,
   #snap-btn           { width: 32px; height: 32px; font-size: 16px; }
+  #duplicate-btn      { width: auto; padding: 0 8px; height: 32px; font-size: 12px; }
 }
