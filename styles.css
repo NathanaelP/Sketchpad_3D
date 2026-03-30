@@ -455,6 +455,31 @@ html, body {
   color: var(--accent-blue);
 }
 
+#mirror-btns {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 4px;
+}
+
+.mirror-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+  touch-action: manipulation;
+}
+
+.mirror-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
 /* Inline name-edit input in the plane list */
 .plane-name-input {
   flex: 1;
