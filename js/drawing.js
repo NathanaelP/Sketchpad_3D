@@ -64,6 +64,14 @@ let clipboard   = null; // { type, points, sourcePlaneId }
 let strokeSelectCb = null;
 let colorTargetId  = null; // persists after deselect so color picker can still apply
 
+// Annotation (Dim) tool
+const ANNOTATION_COLOR = '#FFD54F'; // warm gold
+const annotations = [];
+let annotState       = 'idle'; // 'idle' | 'awaiting_second'
+let annotStartPoint  = null;   // THREE.Vector3
+let annotStartMarker = null;   // THREE.Mesh sphere
+let annotStartSnap   = null;   // snap candidate at first tap
+
 // Snap helpers — return null when snapping is disabled
 function snapEndpoint(sx, sy) {
   return snapEnabled ? findEndpointSnap(sx, sy, strokes, SNAP_RADIUS_PX, camera, renderer) : null;
@@ -105,6 +113,8 @@ export function initDrawing(sceneRef, cameraRef, rendererRef, getActivePlane, sa
   });
 
   initCoordBar();
+  // Per-frame annotation label repositioning
+  (function loop() { updateAnnotationLabels(); requestAnimationFrame(loop); })();
 }
 
 // ─── Line preview helpers ─────────────────────────────────────────────────────
@@ -533,11 +543,138 @@ function initCoordBar() {
   if (bar) bar.addEventListener('pointerdown', (e) => e.stopPropagation());
 }
 
+// ─── Annotation helpers ───────────────────────────────────────────────────────
+function updateAnnotationLabels() {
+  if (!renderer) return;
+  const w = renderer.domElement.clientWidth;
+  const h = renderer.domElement.clientHeight;
+  annotations.forEach(ann => {
+    if (!ann.labelEl) return;
+    const mid = new THREE.Vector3(
+      (ann.p1.x + ann.p2.x) / 2,
+      (ann.p1.y + ann.p2.y) / 2,
+      (ann.p1.z + ann.p2.z) / 2
+    );
+    const v = mid.clone().project(camera);
+    ann.labelEl.style.left = `${(v.x + 1) / 2 * w + 8}px`;
+    ann.labelEl.style.top  = `${(-v.y + 1) / 2 * h - 18}px`;
+  });
+}
+
+function createAnnotation(p1, p2, planeId) {
+  const id = 'annot_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const group = new THREE.Group();
+
+  // Line2 between the two points
+  const lineGeo = new LineGeometry();
+  lineGeo.setPositions([p1.x, p1.y, p1.z, p2.x, p2.y, p2.z]);
+  const lineMat = new LineMaterial({
+    color:      new THREE.Color(ANNOTATION_COLOR),
+    linewidth:  1,
+    resolution: new THREE.Vector2(renderer.domElement.clientWidth, renderer.domElement.clientHeight),
+  });
+  const annLine = new Line2(lineGeo, lineMat);
+  group.add(annLine);
+
+  // Endpoint sphere markers
+  const spGeo  = new THREE.SphereGeometry(0.05, 8, 8);
+  const sp1    = new THREE.Mesh(spGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(ANNOTATION_COLOR) }));
+  sp1.position.set(p1.x, p1.y, p1.z);
+  group.add(sp1);
+
+  const sp2    = new THREE.Mesh(spGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(ANNOTATION_COLOR) }));
+  sp2.position.set(p2.x, p2.y, p2.z);
+  group.add(sp2);
+
+  scene.add(group);
+
+  // Floating HTML label
+  const overlay = document.getElementById('dimension-overlay');
+  const labelEl = document.createElement('div');
+  labelEl.className   = 'annotation-label';
+  const dist = new THREE.Vector3(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z).length();
+  labelEl.textContent = dist.toFixed(2);
+  if (overlay) overlay.appendChild(labelEl);
+
+  annotations.push({ id, planeId, p1: { ...p1 }, p2: { ...p2 }, threeObject: group, labelEl });
+  saveCb?.();
+}
+
+function deleteAnnotation(id) {
+  const idx = annotations.findIndex(a => a.id === id);
+  if (idx === -1) return;
+  const ann = annotations[idx];
+  scene.remove(ann.threeObject);
+  ann.threeObject.children.forEach(child => {
+    child.geometry?.dispose();
+    child.material?.dispose();
+  });
+  ann.labelEl?.remove();
+  annotations.splice(idx, 1);
+  saveCb?.();
+}
+
+// Uses already-set raycaster (call setNDC first)
+function findAnnotationAt() {
+  for (const ann of annotations) {
+    const hits = raycaster.intersectObjects(ann.threeObject.children, false);
+    if (hits.length > 0) return ann;
+  }
+  return null;
+}
+
+function makeAnnotStartMarker(position) {
+  const geo  = new THREE.SphereGeometry(0.07, 8, 8);
+  const mat  = new THREE.MeshBasicMaterial({ color: new THREE.Color(ANNOTATION_COLOR) });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(position);
+  return mesh;
+}
+
+function handleAnnotatePointerUp(e) {
+  const plane = getActivePlaneFn();
+  if (!plane || !plane.meshRef) return;
+
+  if (annotState === 'idle') {
+    // Use pointerdown position for snap reliability on mobile
+    const sx   = pendingStartScreenPos?.x ?? e.clientX;
+    const sy   = pendingStartScreenPos?.y ?? e.clientY;
+    const snap = pendingLineStartSnap ?? snapEndpoint(sx, sy) ?? snapLine(sx, sy);
+    pendingLineStartSnap  = null;
+    pendingStartScreenPos = null;
+    const raw  = snap ? null : getPlaneIntersection({ clientX: sx, clientY: sy }, plane.meshRef);
+    if (!snap && !raw) return;
+    const startPt = snap ? snap.point : applyGridSnap({ x: raw.x, y: raw.y, z: raw.z }, plane);
+
+    annotStartPoint  = new THREE.Vector3(startPt.x, startPt.y, startPt.z);
+    annotStartSnap   = snap ?? null;
+    if (annotStartMarker) scene.remove(annotStartMarker);
+    annotStartMarker = makeAnnotStartMarker(annotStartPoint);
+    scene.add(annotStartMarker);
+    annotState = 'awaiting_second';
+    hideSnapIndicator();
+  } else {
+    pendingLineStartSnap  = null;
+    pendingStartScreenPos = null;
+    const snap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
+    const raw  = snap ? null : getPlaneIntersection(e, plane.meshRef);
+    if (!snap && !raw) return;
+    const endPt = snap ? snap.point : applyGridSnap({ x: raw.x, y: raw.y, z: raw.z }, plane);
+
+    if (annotStartMarker) { scene.remove(annotStartMarker); annotStartMarker = null; }
+    createAnnotation(annotStartPoint, endPt, plane.id);
+    annotStartPoint = null;
+    annotStartSnap  = null;
+    annotState = 'idle';
+    hideSnapIndicator();
+  }
+}
+
 // ─── Pointer handlers ─────────────────────────────────────────────────────────
 function onPointerDown(e) {
-  if (activeTool === 'line' || activeTool === 'erase') {
+  if (activeTool === 'line' || activeTool === 'erase' || activeTool === 'annotate') {
     pointerDownPos       = { x: e.clientX, y: e.clientY };
-    if (activeTool === 'line') {
+    if (activeTool === 'line' || activeTool === 'annotate') {
       // Capture snap and screen position at exact touch-down — lift position can be 8-15 px off on mobile
       pendingLineStartSnap  = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
       pendingStartScreenPos = { x: e.clientX, y: e.clientY };
@@ -616,7 +753,7 @@ function onPointerMove(e) {
   } else if (activeTool === 'select' && drawState === SELECT_HANDLE_DRAGGING) {
     handleSelectDrag(e);
 
-  } else if ((activeTool === 'line' || activeTool === 'freehand') && drawState === STATE_IDLE) {
+  } else if ((activeTool === 'line' || activeTool === 'freehand' || activeTool === 'annotate') && drawState === STATE_IDLE) {
     // Show snap ring while hovering before the first point is placed
     const plane = getActivePlaneFn();
     if (!plane) return;
@@ -683,7 +820,18 @@ function onPointerUp(e) {
     if (hits.length > 0) {
       const stroke = strokes.find(s => s.lineRef === hits[0].object);
       if (stroke) deleteStroke(stroke.id);
+    } else {
+      const annHit = findAnnotationAt();
+      if (annHit) deleteAnnotation(annHit.id);
     }
+
+  } else if (activeTool === 'annotate') {
+    if (!pointerDownPos) return;
+    const dx = e.clientX - pointerDownPos.x;
+    const dy = e.clientY - pointerDownPos.y;
+    pointerDownPos = null;
+    if (Math.hypot(dx, dy) >= TAP_MOVE_THRESHOLD) return; // orbit gesture, not tap
+    handleAnnotatePointerUp(e);
 
   } else if (activeTool === 'select') {
     handleSelectPointerUp(e);
@@ -970,6 +1118,18 @@ function handleGizmoDrag(e) {
       h.position.x += dp.x; h.position.y += dp.y; h.position.z += dp.z;
     });
     regenerateStrokeGeometry(stroke);
+  });
+
+  // Translate all annotations on this plane
+  annotations.filter(a => a.planeId === plane.id).forEach(ann => {
+    ann.p1.x += dp.x; ann.p1.y += dp.y; ann.p1.z += dp.z;
+    ann.p2.x += dp.x; ann.p2.y += dp.y; ann.p2.z += dp.z;
+    ann.threeObject.children[0].geometry.setPositions([
+      ann.p1.x, ann.p1.y, ann.p1.z,
+      ann.p2.x, ann.p2.y, ann.p2.z,
+    ]);
+    ann.threeObject.children[1].position.set(ann.p1.x, ann.p1.y, ann.p1.z);
+    ann.threeObject.children[2].position.set(ann.p2.x, ann.p2.y, ann.p2.z);
   });
 }
 
@@ -1307,6 +1467,11 @@ export function deleteStrokesByPlane(planeId) {
 export function setActiveTool(toolName) {
   if (drawState === STATE_FREEHAND_DRAWING) cancelFreehand();
   if (activeTool === 'select' && toolName !== 'select') deselectAll();
+  if (activeTool === 'annotate' && toolName !== 'annotate' && annotState !== 'idle') {
+    annotState = 'idle';
+    if (annotStartMarker) { scene.remove(annotStartMarker); annotStartMarker = null; }
+    annotStartPoint = null;
+  }
 
   activeTool = toolName;
 
@@ -1435,6 +1600,66 @@ export function pasteStroke() {
   return true;
 }
 
+// ─── Annotation public API ────────────────────────────────────────────────────
+export function getAnnotations() { return annotations; }
+
+export function restoreAnnotation(data) {
+  const group = new THREE.Group();
+
+  const lineGeo = new LineGeometry();
+  lineGeo.setPositions([data.p1.x, data.p1.y, data.p1.z, data.p2.x, data.p2.y, data.p2.z]);
+  const lineMat = new LineMaterial({
+    color:      new THREE.Color(ANNOTATION_COLOR),
+    linewidth:  1,
+    resolution: new THREE.Vector2(renderer.domElement.clientWidth, renderer.domElement.clientHeight),
+  });
+  const annLine = new Line2(lineGeo, lineMat);
+  group.add(annLine);
+
+  const spGeo = new THREE.SphereGeometry(0.05, 8, 8);
+  const sp1   = new THREE.Mesh(spGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(ANNOTATION_COLOR) }));
+  sp1.position.set(data.p1.x, data.p1.y, data.p1.z);
+  group.add(sp1);
+
+  const sp2   = new THREE.Mesh(spGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(ANNOTATION_COLOR) }));
+  sp2.position.set(data.p2.x, data.p2.y, data.p2.z);
+  group.add(sp2);
+
+  scene.add(group);
+
+  const overlay = document.getElementById('dimension-overlay');
+  const labelEl = document.createElement('div');
+  labelEl.className = 'annotation-label';
+  const dist = new THREE.Vector3(data.p2.x - data.p1.x, data.p2.y - data.p1.y, data.p2.z - data.p1.z).length();
+  labelEl.textContent = dist.toFixed(2);
+  if (overlay) overlay.appendChild(labelEl);
+
+  annotations.push({
+    id:          data.id,
+    planeId:     data.planeId,
+    p1:          { ...data.p1 },
+    p2:          { ...data.p2 },
+    threeObject: group,
+    labelEl,
+  });
+}
+
+export function deleteAnnotationsByPlane(planeId) {
+  [...annotations.filter(a => a.planeId === planeId)].forEach(a => deleteAnnotation(a.id));
+}
+
+export function moveAnnotationsToNewPlanePosition(planeId, dx, dy, dz) {
+  annotations.filter(a => a.planeId === planeId).forEach(ann => {
+    ann.p1.x += dx; ann.p1.y += dy; ann.p1.z += dz;
+    ann.p2.x += dx; ann.p2.y += dy; ann.p2.z += dz;
+    ann.threeObject.children[0].geometry.setPositions([
+      ann.p1.x, ann.p1.y, ann.p1.z,
+      ann.p2.x, ann.p2.y, ann.p2.z,
+    ]);
+    ann.threeObject.children[1].position.set(ann.p1.x, ann.p1.y, ann.p1.z);
+    ann.threeObject.children[2].position.set(ann.p2.x, ann.p2.y, ann.p2.z);
+  });
+}
 export function setStrokeSelectCallback(fn) {
   strokeSelectCb = fn;
 }

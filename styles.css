@@ -704,6 +704,21 @@ html, body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
 }
 
+.annotation-label {
+  position: absolute;
+  background: rgba(22, 22, 40, 0.88);
+  color: #FFD54F;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 213, 79, 0.45);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  user-select: none;
+}
+
 /* ── Desktop: panel pushes canvas ── */
 /* Panel open/close is handled by the global .open class rules (same as mobile).   */
 /* initUI adds .open to both #side-panel and #panel-tab on desktop startup.        */
@@ -729,7 +744,7 @@ html, body {
   #active-tool-label  { display: none; }
   #toolbar            { gap: 4px; padding: 0 8px; }
   .tool-group         { gap: 2px; }
-  .tool-btn           { padding: 4px 8px; font-size: 12px; }
+  .tool-btn           { padding: 4px 6px; font-size: 11px; }
   #undo-btn,
   #menu-btn,
   #snap-btn           { width: 32px; height: 32px; font-size: 16px; }
