@@ -1422,3 +1422,50 @@ export function pasteStroke() {
   saveCb();
   return true;
 }
+
+export function mirrorSelectedStroke(axis) {
+  // axis: 'H' = flip local X (left-right), 'V' = flip local Y (up-down)
+  if (!selectedStroke) return false;
+  const plane = getPlaneById(selectedStroke.planeId);
+  if (!plane) return false;
+
+  const newPoints = selectedStroke.points.map(wp => {
+    const v = new THREE.Vector3(wp.x, wp.y, wp.z);
+    plane.threeObject.worldToLocal(v);
+    if (axis === 'H') v.x = -v.x;
+    else              v.y = -v.y;
+    v.z = 0;
+    plane.threeObject.localToWorld(v);
+    return { x: v.x, y: v.y, z: v.z };
+  });
+
+  const strokeId = 'stroke_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+  const stroke = {
+    id:              strokeId,
+    planeId:         plane.id,
+    type:            selectedStroke.type,
+    color:           plane.color,
+    selected:        false,
+    points:          newPoints,
+    snapConnections: [],
+  };
+
+  stroke.threeObject    = new THREE.Group();
+  stroke.lineRef        = buildLineObject(stroke.points, stroke.color);
+  stroke.handleGroupRef = buildHandleGroup(stroke.points, stroke.color);
+  stroke.handleGroupRef.visible = false;
+  stroke.handleGroupRef.children.forEach(m => { m.userData.strokeId = strokeId; });
+  stroke.threeObject.add(stroke.lineRef);
+  stroke.threeObject.add(stroke.handleGroupRef);
+  scene.add(stroke.threeObject);
+  strokes.push(stroke);
+  pushHistory({ action: 'add_stroke', strokeId });
+
+  if (activeTool === 'select') {
+    deselectAll();
+    selectStroke(stroke);
+  }
+
+  saveCb();
+  return true;
+}

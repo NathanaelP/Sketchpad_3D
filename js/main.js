@@ -13,7 +13,7 @@ import {
   setSnapEnabled, isSnapEnabled,
   setLineWidth, getLineWidth,
   deleteStrokesByPlane, moveStrokesToNewPlanePosition,
-  copySelectedStroke, pasteStroke,
+  copySelectedStroke, pasteStroke, mirrorSelectedStroke,
 } from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
 import { save, load, exportJSON, importJSON } from './storage.js';
@@ -146,12 +146,17 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  document.getElementById('mirror-h-btn')?.addEventListener('click', () => mirrorSelectedStroke('H'));
+  document.getElementById('mirror-v-btn')?.addEventListener('click', () => mirrorSelectedStroke('V'));
+
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key === 'c') { e.preventDefault(); copySelectedStroke(); }
     if (mod && e.key === 'v') { e.preventDefault(); if (pasteStroke()) updatePlaneList(getAllPlanes()); }
     if (mod && e.key === 'd') { e.preventDefault(); copySelectedStroke(); if (pasteStroke()) updatePlaneList(getAllPlanes()); }
+    if (!mod && e.key === 'm') { e.preventDefault(); mirrorSelectedStroke('H'); }
+    if (!mod && e.key === 'M') { e.preventDefault(); mirrorSelectedStroke('V'); }
   });
 
   // 10. File I/O — export JSON, import JSON, export SVG
