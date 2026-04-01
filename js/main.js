@@ -14,6 +14,7 @@ import {
   setLineWidth, getLineWidth,
   deleteStrokesByPlane, moveStrokesToNewPlanePosition,
   copySelectedStroke, pasteStroke, mirrorSelectedStroke,
+  setStrokeSelectCallback, setSelectedStrokeColor, clearSelectedStrokeColor,
 } from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
 import { save, load, exportJSON, importJSON } from './storage.js';
@@ -148,6 +149,20 @@ window.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('mirror-h-btn')?.addEventListener('click', () => mirrorSelectedStroke('H'));
   document.getElementById('mirror-v-btn')?.addEventListener('click', () => mirrorSelectedStroke('V'));
+
+  // Stroke color override
+  const strokeColorInput = document.getElementById('stroke-color-input');
+  const strokeColorReset = document.getElementById('stroke-color-reset');
+  if (strokeColorInput) {
+    strokeColorInput.addEventListener('input', () => setSelectedStrokeColor(strokeColorInput.value));
+  }
+  if (strokeColorReset) {
+    strokeColorReset.addEventListener('click', () => clearSelectedStrokeColor());
+  }
+  setStrokeSelectCallback((color, isOverride) => {
+    if (strokeColorInput) strokeColorInput.value = color ?? '#4FC3F7';
+    if (strokeColorReset) strokeColorReset.style.opacity = isOverride ? '1' : '0.4';
+  });
 
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
