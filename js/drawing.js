@@ -62,6 +62,7 @@ let snapEnabled = true;
 let lineWidth   = 3; // px — applied to all new and existing strokes
 let clipboard   = null; // { type, points, sourcePlaneId }
 let strokeSelectCb = null;
+let colorTargetId  = null; // persists after deselect so color picker can still apply
 
 // Snap helpers — return null when snapping is disabled
 function snapEndpoint(sx, sy) {
@@ -1061,6 +1062,7 @@ function selectStroke(stroke) {
     const plane = getPlaneById(stroke.planeId) || getActivePlaneFn();
     if (plane) showCoordBarForSelect(stroke, plane);
   }
+  colorTargetId = stroke.id;
   strokeSelectCb?.(stroke.strokeColor || stroke.color, !!stroke.strokeColor);
 }
 
@@ -1438,22 +1440,25 @@ export function setStrokeSelectCallback(fn) {
 }
 
 export function setSelectedStrokeColor(hex) {
-  if (!selectedStroke) return;
-  selectedStroke.strokeColor = hex;
-  selectedStroke.lineRef.material.color.set(hex);
+  const target = selectedStroke ?? strokes.find(s => s.id === colorTargetId);
+  if (!target) return;
+  target.strokeColor = hex;
+  target.lineRef.material.color.set(hex);
   const handleColor = new THREE.Color(hex).lerp(new THREE.Color(0xffffff), 0.5);
-  selectedStroke.handleGroupRef.children.forEach(m => m.material.color.copy(handleColor));
+  target.handleGroupRef.children.forEach(m => m.material.color.copy(handleColor));
   saveCb();
 }
 
 export function clearSelectedStrokeColor() {
-  if (!selectedStroke) return;
-  selectedStroke.strokeColor = null;
-  const plane = getPlaneById(selectedStroke.planeId);
-  const col = plane?.color || selectedStroke.color;
-  selectedStroke.lineRef.material.color.set(col);
+  const target = selectedStroke ?? strokes.find(s => s.id === colorTargetId);
+  if (!target) return;
+  target.strokeColor = null;
+  colorTargetId = null;
+  const plane = getPlaneById(target.planeId);
+  const col = plane?.color || target.color;
+  target.lineRef.material.color.set(col);
   const handleColor = new THREE.Color(col).lerp(new THREE.Color(0xffffff), 0.5);
-  selectedStroke.handleGroupRef.children.forEach(m => m.material.color.copy(handleColor));
+  target.handleGroupRef.children.forEach(m => m.material.color.copy(handleColor));
   strokeSelectCb?.(col, false);
   saveCb();
 }
