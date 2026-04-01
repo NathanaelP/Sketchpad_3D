@@ -153,8 +153,11 @@ window.addEventListener('DOMContentLoaded', () => {
   // Stroke color override
   const strokeColorInput = document.getElementById('stroke-color-input');
   const strokeColorReset = document.getElementById('stroke-color-reset');
+  document.getElementById('stroke-color-row')?.addEventListener('pointerdown', e => e.stopPropagation());
   if (strokeColorInput) {
-    strokeColorInput.addEventListener('input', () => setSelectedStrokeColor(strokeColorInput.value));
+    // 'input' fires live on desktop; 'change' fires on mobile after picker is confirmed
+    strokeColorInput.addEventListener('input',  () => setSelectedStrokeColor(strokeColorInput.value));
+    strokeColorInput.addEventListener('change', () => setSelectedStrokeColor(strokeColorInput.value));
   }
   if (strokeColorReset) {
     strokeColorReset.addEventListener('click', () => clearSelectedStrokeColor());
