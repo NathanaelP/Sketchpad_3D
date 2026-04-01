@@ -61,6 +61,7 @@ const MAX_HISTORY = 50;
 let snapEnabled = true;
 let lineWidth   = 3; // px — applied to all new and existing strokes
 let clipboard   = null; // { type, points, sourcePlaneId }
+let strokeSelectCb = null;
 
 // Snap helpers — return null when snapping is disabled
 function snapEndpoint(sx, sy) {
@@ -760,6 +761,7 @@ function commitLine(p1, p2, plane, startSnap, endSnap) {
     planeId:          plane.id,
     type:             'line',
     color:            plane.color,
+    strokeColor:      null,
     selected:         false,
     points:           controlPoints,
     snapConnections:  [],
@@ -813,6 +815,7 @@ function commitFreehand(rawPoints, plane, startSnap, endSnap) {
     planeId:          plane.id,
     type:             'freehand',
     color:            plane.color,
+    strokeColor:      null,
     selected:         false,
     points:           controlPoints,
     snapConnections:  [],
@@ -1058,15 +1061,17 @@ function selectStroke(stroke) {
     const plane = getPlaneById(stroke.planeId) || getActivePlaneFn();
     if (plane) showCoordBarForSelect(stroke, plane);
   }
+  strokeSelectCb?.(stroke.strokeColor || stroke.color, !!stroke.strokeColor);
 }
 
 function deselectAll() {
   if (selectedStroke) {
     commitSelectEdit();
-    selectedStroke.lineRef.material.color.set(new THREE.Color(selectedStroke.color));
+    selectedStroke.lineRef.material.color.set(new THREE.Color(selectedStroke.strokeColor || selectedStroke.color));
     selectedStroke.handleGroupRef.visible = false;
     selectedStroke.selected = false;
     selectedStroke = null;
+    strokeSelectCb?.(null, false);
   }
   dragState = null;
   selectEditOldPoints = null;
@@ -1337,8 +1342,9 @@ export function getStrokes() {
 
 // Reconstruct Three.js objects from saved plain data (called on load, no history/saveCb).
 export function restoreStroke(strokeData) {
-  const lineObj     = buildLineObject(strokeData.points, strokeData.color);
-  const handleGroup = buildHandleGroup(strokeData.points, strokeData.color);
+  const effectiveColor = strokeData.strokeColor || strokeData.color;
+  const lineObj     = buildLineObject(strokeData.points, effectiveColor);
+  const handleGroup = buildHandleGroup(strokeData.points, effectiveColor);
   handleGroup.visible = false;
 
   const strokeGroup = new THREE.Group();
@@ -1351,6 +1357,7 @@ export function restoreStroke(strokeData) {
     planeId:          strokeData.planeId,
     type:             strokeData.type,
     color:            strokeData.color,
+    strokeColor:      strokeData.strokeColor ?? null,
     selected:         false,
     points:           strokeData.points.map(p => ({ ...p })),
     snapConnections:  [...(strokeData.snapConnections || [])],
@@ -1370,6 +1377,7 @@ export function copySelectedStroke() {
     type:          selectedStroke.type,
     points:        selectedStroke.points.map(p => ({ x: p.x, y: p.y, z: p.z })),
     sourcePlaneId: selectedStroke.planeId,
+    strokeColor:   selectedStroke.strokeColor ?? null,
   };
   return true;
 }
@@ -1393,19 +1401,21 @@ export function pasteStroke() {
   });
 
   const strokeId = 'stroke_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+  const pasteColor = clipboard.strokeColor || targetPlane.color;
   const stroke = {
     id:              strokeId,
     planeId:         targetPlane.id,
     type:            clipboard.type,
     color:           targetPlane.color,
+    strokeColor:     clipboard.strokeColor ?? null,
     selected:        false,
     points:          newPoints,
     snapConnections: [],
   };
 
   stroke.threeObject    = new THREE.Group();
-  stroke.lineRef        = buildLineObject(stroke.points, stroke.color);
-  stroke.handleGroupRef = buildHandleGroup(stroke.points, stroke.color);
+  stroke.lineRef        = buildLineObject(stroke.points, pasteColor);
+  stroke.handleGroupRef = buildHandleGroup(stroke.points, pasteColor);
   stroke.handleGroupRef.visible = false;
   stroke.handleGroupRef.children.forEach(m => { m.userData.strokeId = strokeId; });
   stroke.threeObject.add(stroke.lineRef);
@@ -1421,6 +1431,31 @@ export function pasteStroke() {
 
   saveCb();
   return true;
+}
+
+export function setStrokeSelectCallback(fn) {
+  strokeSelectCb = fn;
+}
+
+export function setSelectedStrokeColor(hex) {
+  if (!selectedStroke) return;
+  selectedStroke.strokeColor = hex;
+  selectedStroke.lineRef.material.color.set(hex);
+  const handleColor = new THREE.Color(hex).lerp(new THREE.Color(0xffffff), 0.5);
+  selectedStroke.handleGroupRef.children.forEach(m => m.material.color.copy(handleColor));
+  saveCb();
+}
+
+export function clearSelectedStrokeColor() {
+  if (!selectedStroke) return;
+  selectedStroke.strokeColor = null;
+  const plane = getPlaneById(selectedStroke.planeId);
+  const col = plane?.color || selectedStroke.color;
+  selectedStroke.lineRef.material.color.set(col);
+  const handleColor = new THREE.Color(col).lerp(new THREE.Color(0xffffff), 0.5);
+  selectedStroke.handleGroupRef.children.forEach(m => m.material.color.copy(handleColor));
+  strokeSelectCb?.(col, false);
+  saveCb();
 }
 
 export function mirrorSelectedStroke(axis) {
@@ -1440,19 +1475,21 @@ export function mirrorSelectedStroke(axis) {
   });
 
   const strokeId = 'stroke_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+  const mirrorColor = selectedStroke.strokeColor || plane.color;
   const stroke = {
     id:              strokeId,
     planeId:         plane.id,
     type:            selectedStroke.type,
     color:           plane.color,
+    strokeColor:     selectedStroke.strokeColor ?? null,
     selected:        false,
     points:          newPoints,
     snapConnections: [],
   };
 
   stroke.threeObject    = new THREE.Group();
-  stroke.lineRef        = buildLineObject(stroke.points, stroke.color);
-  stroke.handleGroupRef = buildHandleGroup(stroke.points, stroke.color);
+  stroke.lineRef        = buildLineObject(stroke.points, mirrorColor);
+  stroke.handleGroupRef = buildHandleGroup(stroke.points, mirrorColor);
   stroke.handleGroupRef.visible = false;
   stroke.handleGroupRef.children.forEach(m => { m.userData.strokeId = strokeId; });
   stroke.threeObject.add(stroke.lineRef);
