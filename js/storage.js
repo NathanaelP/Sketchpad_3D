@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'sketchpad_autosave';
 
-export function save(planes, strokes, annotations) {
+export function save(planes, strokes, annotations, bookmarks) {
   const data = {
     version: 1,
     planes: planes.map(p => ({
@@ -32,6 +32,12 @@ export function save(planes, strokes, annotations) {
       p1:      { ...a.p1 },
       p2:      { ...a.p2 },
     })),
+    bookmarks: (bookmarks || []).map(b => ({
+      id:       b.id,
+      name:     b.name,
+      position: { ...b.position },
+      target:   { ...b.target },
+    })),
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -49,7 +55,7 @@ export function load() {
   }
 }
 
-export function exportJSON(planes, strokes, annotations) {
+export function exportJSON(planes, strokes, annotations, bookmarks) {
   return JSON.stringify({
     version: 1,
     exportedAt: new Date().toISOString(),
@@ -81,6 +87,12 @@ export function exportJSON(planes, strokes, annotations) {
       planeId: a.planeId,
       p1:      { ...a.p1 },
       p2:      { ...a.p2 },
+    })),
+    bookmarks: (bookmarks || []).map(b => ({
+      id:       b.id,
+      name:     b.name,
+      position: { ...b.position },
+      target:   { ...b.target },
     })),
   }, null, 2);
 }

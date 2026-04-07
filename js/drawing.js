@@ -14,6 +14,7 @@ const STATE_FREEHAND_DRAWING  = 'FREEHAND_DRAWING';
 const SELECT_IDLE             = 'SELECT_IDLE';
 const SELECT_HANDLE_DRAGGING  = 'SELECT_HANDLE_DRAGGING';
 const PLANE_DRAG              = 'PLANE_DRAG';
+const GROUP_DRAG              = 'GROUP_DRAG';
 
 const TAP_MOVE_THRESHOLD     = 12;   // px — travel beyond this = orbit, not tap
 const LINE_RAYCAST_THRESHOLD = 0.15; // world units
@@ -45,10 +46,14 @@ let freehandStartSnap = null; // {point, strokeId} | null — snap at freehand s
 
 // Select tool
 let selectedStroke    = null;
+const selectedStrokeIds = new Set(); // all selected IDs (primary + multi-select)
 let dragState         = null; // { stroke, pointIndex, handleMesh, oldPoint }
 let selectEditOldPoints = null; // snapshot of stroke.points before coord bar edits (for undo)
 let currentPivot      = 'start'; // 'start' | 'center' | 'end'
 let planeDragState    = null; // { plane, axis, helperPlane, startHitPt, startPos }
+let groupDragState    = null; // { plane, startHitPt, startPositions: Map<id, points[]> }
+let lassoState        = null; // { startX, startY, additive, started }
+let lassoRectEl       = null; // <div> overlay — lazy created
 
 // Snap indicator
 let snapIndicatorMesh = null; // THREE.Mesh — lazy-created, reused
@@ -104,11 +109,11 @@ export function initDrawing(sceneRef, cameraRef, rendererRef, getActivePlane, sa
       cancelFreehand();
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') undoLast();
-    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedStroke) {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedStrokeIds.size > 0) {
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       e.preventDefault();
-      deleteStroke(selectedStroke.id);
+      deleteSelectedStrokes();
     }
   });
 
@@ -543,6 +548,121 @@ function initCoordBar() {
   if (bar) bar.addEventListener('pointerdown', (e) => e.stopPropagation());
 }
 
+// ─── Multi-select helpers ─────────────────────────────────────────────────────
+function getLassoRectEl() {
+  if (!lassoRectEl) {
+    lassoRectEl = document.createElement('div');
+    lassoRectEl.id = 'lasso-rect';
+    document.body.appendChild(lassoRectEl);
+  }
+  return lassoRectEl;
+}
+
+function updateLassoDisplay(x1, y1, x2, y2) {
+  const el  = getLassoRectEl();
+  const l   = Math.min(x1, x2), t = Math.min(y1, y2);
+  const w   = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+  el.style.cssText = `display:block;position:fixed;left:${l}px;top:${t}px;width:${w}px;height:${h}px;` +
+    `border:1px dashed rgba(255,255,255,0.55);background:rgba(255,255,255,0.07);pointer-events:none;z-index:5;`;
+}
+
+function hideLassoRectEl() {
+  if (lassoRectEl) lassoRectEl.style.display = 'none';
+}
+
+function finalizeLasso(x1, y1, x2, y2, additive) {
+  if (!additive) deselectAll();
+  const canvas = renderer.domElement;
+  const rect   = canvas.getBoundingClientRect();
+  const w      = canvas.clientWidth;
+  const h      = canvas.clientHeight;
+  const minX   = Math.min(x1, x2), maxX = Math.max(x1, x2);
+  const minY   = Math.min(y1, y2), maxY = Math.max(y1, y2);
+
+  strokes.forEach(stroke => {
+    if (!stroke.threeObject.visible) return;
+    if (selectedStrokeIds.has(stroke.id)) return;
+    const inside = stroke.points.some(pt => {
+      const v  = new THREE.Vector3(pt.x, pt.y, pt.z).project(camera);
+      if (v.z > 1) return false;
+      const sx = (v.x + 1) / 2 * w + rect.left;
+      const sy = (-v.y + 1) / 2 * h + rect.top;
+      return sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
+    });
+    if (!inside) return;
+    if (selectedStrokeIds.size === 0 && !selectedStroke) {
+      selectStroke(stroke);
+    } else {
+      addToSelection(stroke);
+    }
+  });
+}
+
+function deleteSelectedStrokes() {
+  if (selectedStrokeIds.size === 0) return;
+  const ids = [...selectedStrokeIds];
+  deselectAll();
+  const idSet = new Set(ids);
+  const toDelete = strokes.filter(s => idSet.has(s.id));
+  toDelete.forEach(stroke => {
+    scene.remove(stroke.threeObject);
+    stroke.lineRef.geometry.dispose();
+    stroke.lineRef.material.dispose();
+    stroke.handleGroupRef.children.forEach(m => { m.geometry.dispose(); m.material.dispose(); });
+    stroke.snapConnections.forEach(otherId => {
+      const other = strokes.find(s => s.id === otherId && !idSet.has(s.id));
+      if (other) other.snapConnections = other.snapConnections.filter(i => !idSet.has(i));
+    });
+  });
+  strokes.splice(0, strokes.length, ...strokes.filter(s => !idSet.has(s.id)));
+  history.splice(0, history.length, ...history.filter(e => !idSet.has(e.strokeId)));
+  saveCb?.();
+}
+
+function startGroupDrag(e) {
+  const plane = getActivePlaneFn();
+  if (!plane || !plane.meshRef) return;
+  const hitPt = getPlaneIntersection(e, plane.meshRef);
+  if (!hitPt) return;
+
+  const startPositions = new Map();
+  selectedStrokeIds.forEach(id => {
+    const s = strokes.find(st => st.id === id);
+    if (s) startPositions.set(id, s.points.map(p => ({ ...p })));
+  });
+
+  groupDragState = {
+    plane,
+    startHitPt:    { x: hitPt.x, y: hitPt.y, z: hitPt.z },
+    startPositions,
+  };
+  drawState = GROUP_DRAG;
+  getControls().enabled = false;
+  renderer.domElement.setPointerCapture(e.pointerId);
+}
+
+function handleGroupDrag(e) {
+  if (!groupDragState) return;
+  const { plane, startHitPt, startPositions } = groupDragState;
+  const pt = getPlaneIntersection(e, plane.meshRef);
+  if (!pt) return;
+
+  const dx = pt.x - startHitPt.x;
+  const dy = pt.y - startHitPt.y;
+  const dz = pt.z - startHitPt.z;
+
+  selectedStrokeIds.forEach(id => {
+    const s      = strokes.find(st => st.id === id);
+    const origPts = startPositions.get(id);
+    if (!s || !origPts) return;
+    origPts.forEach((op, i) => {
+      s.points[i] = { x: op.x + dx, y: op.y + dy, z: op.z + dz };
+      s.handleGroupRef?.children[i]?.position.set(s.points[i].x, s.points[i].y, s.points[i].z);
+    });
+    regenerateStrokeGeometry(s);
+  });
+}
+
 // ─── Annotation helpers ───────────────────────────────────────────────────────
 function updateAnnotationLabels() {
   if (!renderer) return;
@@ -750,8 +870,18 @@ function onPointerMove(e) {
   } else if (drawState === PLANE_DRAG) {
     handleGizmoDrag(e);
 
+  } else if (drawState === GROUP_DRAG) {
+    handleGroupDrag(e);
+
   } else if (activeTool === 'select' && drawState === SELECT_HANDLE_DRAGGING) {
     handleSelectDrag(e);
+
+  } else if (activeTool === 'select' && lassoState) {
+    const dist = Math.hypot(e.clientX - lassoState.startX, e.clientY - lassoState.startY);
+    if (dist >= 8) {
+      lassoState.started = true;
+      updateLassoDisplay(lassoState.startX, lassoState.startY, e.clientX, e.clientY);
+    }
 
   } else if ((activeTool === 'line' || activeTool === 'freehand' || activeTool === 'annotate') && drawState === STATE_IDLE) {
     // Show snap ring while hovering before the first point is placed
@@ -1166,11 +1296,23 @@ function handleSelectPointerDown(e) {
   const lineHits    = raycaster.intersectObjects(allLineRefs);
   if (lineHits.length > 0) {
     const stroke = strokes.find(s => s.lineRef === lineHits[0].object);
-    if (stroke) { selectStroke(stroke); return; }
+    if (stroke) {
+      if (e.ctrlKey || e.metaKey) {
+        addToSelection(stroke);
+      } else if (selectedStrokeIds.has(stroke.id) && selectedStrokeIds.size > 1) {
+        // Start group drag — keeps current multi-selection
+        startGroupDrag(e);
+      } else {
+        selectStroke(stroke);
+      }
+      return;
+    }
   }
 
-  // 3. Nothing hit
-  deselectAll();
+  // 3. Nothing hit — start lasso rect
+  if (!(e.ctrlKey || e.metaKey)) deselectAll();
+  lassoState = { startX: e.clientX, startY: e.clientY, additive: e.ctrlKey || e.metaKey, started: false };
+  renderer.domElement.setPointerCapture(e.pointerId);
 }
 
 function handleSelectDrag(e) {
@@ -1192,10 +1334,38 @@ function handleSelectPointerUp(e) {
   if (drawState === PLANE_DRAG) {
     drawState      = SELECT_IDLE;
     planeDragState = null;
-    getControls().enabled = true;
+    getControls().enabled = (activeTool === 'orbit');
     saveCb?.();
     return;
   }
+
+  if (drawState === GROUP_DRAG) {
+    drawState = SELECT_IDLE;
+    getControls().enabled = (activeTool === 'orbit');
+    if (groupDragState) {
+      const entries = [];
+      selectedStrokeIds.forEach(id => {
+        const s       = strokes.find(st => st.id === id);
+        const origPts = groupDragState.startPositions.get(id);
+        if (!s || !origPts) return;
+        entries.push({ strokeId: id, oldPoints: origPts, newPoints: s.points.map(p => ({ ...p })) });
+      });
+      if (entries.some(en => JSON.stringify(en.oldPoints) !== JSON.stringify(en.newPoints))) {
+        pushHistory({ action: 'move_group', entries });
+        saveCb?.();
+      }
+      groupDragState = null;
+    }
+    return;
+  }
+
+  if (lassoState) {
+    if (lassoState.started) finalizeLasso(lassoState.startX, lassoState.startY, e.clientX, e.clientY, lassoState.additive);
+    hideLassoRectEl();
+    lassoState = null;
+    return;
+  }
+
   if (drawState !== SELECT_HANDLE_DRAGGING || !dragState) return;
 
   const { stroke, pointIndex, oldPoint } = dragState;
@@ -1218,6 +1388,7 @@ function selectStroke(stroke) {
   stroke.lineRef.material.color.set(0xffff00);
   stroke.handleGroupRef.visible = true;
   selectedStroke = stroke;
+  selectedStrokeIds.add(stroke.id);
   if (stroke.type === 'line' && stroke.points.length === 2) {
     const plane = getPlaneById(stroke.planeId) || getActivePlaneFn();
     if (plane) showCoordBarForSelect(stroke, plane);
@@ -1226,12 +1397,47 @@ function selectStroke(stroke) {
   strokeSelectCb?.(stroke.strokeColor || stroke.color, !!stroke.strokeColor);
 }
 
-function deselectAll() {
+function addToSelection(stroke) {
+  if (selectedStrokeIds.has(stroke.id)) {
+    // Toggle off
+    selectedStrokeIds.delete(stroke.id);
+    stroke.selected = false;
+    stroke.lineRef.material.color.set(new THREE.Color(stroke.strokeColor || stroke.color));
+    stroke.handleGroupRef.visible = false;
+    if (selectedStroke?.id === stroke.id) {
+      commitSelectEdit();
+      selectedStroke = null;
+      hideCoordBar();
+      strokeSelectCb?.(null, false);
+    }
+    return;
+  }
+  // Downgrade primary to secondary (orange, no handles, no coord bar)
   if (selectedStroke) {
-    commitSelectEdit();
-    selectedStroke.lineRef.material.color.set(new THREE.Color(selectedStroke.strokeColor || selectedStroke.color));
+    selectedStroke.lineRef.material.color.set(0xff8c00);
     selectedStroke.handleGroupRef.visible = false;
-    selectedStroke.selected = false;
+    commitSelectEdit();
+    hideCoordBar();
+    strokeSelectCb?.(null, false);
+    selectedStroke = null;
+  }
+  stroke.selected = true;
+  stroke.lineRef.material.color.set(0xff8c00);
+  selectedStrokeIds.add(stroke.id);
+}
+
+function deselectAll() {
+  commitSelectEdit();
+  selectedStrokeIds.forEach(id => {
+    const s = strokes.find(st => st.id === id);
+    if (s) {
+      s.lineRef.material.color.set(new THREE.Color(s.strokeColor || s.color));
+      s.handleGroupRef.visible = false;
+      s.selected = false;
+    }
+  });
+  selectedStrokeIds.clear();
+  if (selectedStroke) {
     selectedStroke = null;
     strokeSelectCb?.(null, false);
   }
@@ -1416,6 +1622,18 @@ export function undoLast() {
       }
     }
     saveCb?.();
+
+  } else if (entry.action === 'move_group') {
+    entry.entries.forEach(({ strokeId, oldPoints }) => {
+      const stroke = strokes.find(s => s.id === strokeId);
+      if (!stroke) return;
+      oldPoints.forEach((pt, i) => {
+        stroke.points[i] = { ...pt };
+        stroke.handleGroupRef.children[i]?.position.set(pt.x, pt.y, pt.z);
+      });
+      regenerateStrokeGeometry(stroke);
+    });
+    saveCb?.();
   }
 }
 
@@ -1466,7 +1684,11 @@ export function deleteStrokesByPlane(planeId) {
 
 export function setActiveTool(toolName) {
   if (drawState === STATE_FREEHAND_DRAWING) cancelFreehand();
-  if (activeTool === 'select' && toolName !== 'select') deselectAll();
+  if (activeTool === 'select' && toolName !== 'select') {
+    deselectAll();
+    hideLassoRectEl();
+    lassoState = null;
+  }
   if (activeTool === 'annotate' && toolName !== 'annotate' && annotState !== 'idle') {
     annotState = 'idle';
     if (annotStartMarker) { scene.remove(annotStartMarker); annotStartMarker = null; }
@@ -1643,6 +1865,17 @@ export function restoreAnnotation(data) {
     labelEl,
   });
 }
+
+export function selectAllStrokes() {
+  deselectAll();
+  strokes.filter(s => s.threeObject.visible).forEach(s => {
+    s.selected = true;
+    s.lineRef.material.color.set(0xff8c00);
+    selectedStrokeIds.add(s.id);
+  });
+}
+
+export { deleteSelectedStrokes };
 
 export function deleteAnnotationsByPlane(planeId) {
   [...annotations.filter(a => a.planeId === planeId)].forEach(a => deleteAnnotation(a.id));

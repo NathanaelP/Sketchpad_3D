@@ -428,6 +428,87 @@ html, body {
 }
 
 /* ── File I/O buttons ── */
+#bookmarks-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+#bookmarks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.bookmarks-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+#save-view-btn {
+  padding: 3px 9px;
+  background: rgba(79, 195, 247, 0.1);
+  border: 1px solid rgba(79, 195, 247, 0.28);
+  color: var(--accent-blue);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+  touch-action: manipulation;
+}
+#save-view-btn:hover { background: rgba(79, 195, 247, 0.2); }
+
+#bookmark-list { display: flex; flex-direction: column; gap: 3px; }
+
+.bookmark-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.bookmark-row:hover { background: rgba(255, 255, 255, 0.06); }
+
+.bookmark-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.bookmark-name-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--accent-blue);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 2px 5px;
+}
+
+.bookmark-del {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.12s;
+  touch-action: manipulation;
+}
+.bookmark-del:hover { color: #ef5350; }
+
 #file-btns {
   display: flex;
   gap: 6px;
