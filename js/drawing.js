@@ -49,7 +49,6 @@ let selectedStroke    = null;
 const selectedStrokeIds = new Set(); // all selected IDs (primary + multi-select)
 let dragState         = null; // { stroke, pointIndex, handleMesh, oldPoint }
 let selectEditOldPoints = null; // snapshot of stroke.points before coord bar edits (for undo)
-let currentPivot      = 'start'; // 'start' | 'center' | 'end'
 let planeDragState    = null; // { plane, axis, helperPlane, startHitPt, startPos }
 let groupDragState    = null; // { plane, startHitPt, startPositions: Map<id, points[]> }
 let lassoState        = null; // { startX, startY, additive, started }
@@ -284,33 +283,17 @@ function fillCoordAngle(stroke, plane) {
 }
 
 // Rotate line endpoints to achieve newAngleDeg around the chosen pivot
-function applyAngleToStroke(newAngleDeg, pivot, stroke, plane) {
+function applyAngleToStroke(newAngleDeg, stroke, plane) {
   const p0 = worldToPlaneLocal(stroke.points[0], plane);
   const p1 = worldToPlaneLocal(stroke.points[1], plane);
   const dx = p1.x - p0.x, dy = p1.y - p0.y;
   const L  = Math.sqrt(dx * dx + dy * dy);
   if (L < 1e-6) return;
   const θ  = newAngleDeg * Math.PI / 180;
-  const cx = Math.cos(θ), cy = Math.sin(θ);
+  const np1 = { x: p0.x + L * Math.cos(θ), y: p0.y + L * Math.sin(θ) };
 
-  let np0, np1;
-  if (pivot === 'start') {
-    np0 = p0;
-    np1 = { x: p0.x + L * cx, y: p0.y + L * cy };
-  } else if (pivot === 'end') {
-    np1 = p1;
-    np0 = { x: p1.x - L * cx, y: p1.y - L * cy };
-  } else {                              // center
-    const mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
-    np0 = { x: mx - (L / 2) * cx, y: my - (L / 2) * cy };
-    np1 = { x: mx + (L / 2) * cx, y: my + (L / 2) * cy };
-  }
-
-  const wp0 = planeLocalToWorld(np0.x, np0.y, plane);
   const wp1 = planeLocalToWorld(np1.x, np1.y, plane);
-  stroke.points[0] = { x: wp0.x, y: wp0.y, z: wp0.z };
   stroke.points[1] = { x: wp1.x, y: wp1.y, z: wp1.z };
-  stroke.handleGroupRef.children[0]?.position.set(wp0.x, wp0.y, wp0.z);
   stroke.handleGroupRef.children[1]?.position.set(wp1.x, wp1.y, wp1.z);
   regenerateStrokeGeometry(stroke);
 }
@@ -465,16 +448,6 @@ function initCoordBar() {
 
   goBtn.addEventListener('click', commitFromCoordBar);
 
-  // ── Pivot buttons ───────────────────────────────────────────────────────────
-  document.querySelectorAll('.pivot-btn').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      document.querySelectorAll('.pivot-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentPivot = btn.dataset.pivot;
-    });
-  });
-
   // ── Angle input ─────────────────────────────────────────────────────────────
   const angleInput = document.getElementById('coord-angle');
   if (angleInput) {
@@ -486,7 +459,7 @@ function initCoordBar() {
       if (isNaN(deg)) return;
       if (!selectEditOldPoints)
         selectEditOldPoints = selectedStroke.points.map(p => ({ ...p }));
-      applyAngleToStroke(deg, currentPivot, selectedStroke, plane);
+      applyAngleToStroke(deg, selectedStroke, plane);
       fillCoordStart(selectedStroke.points[0], plane);
       fillCoordEnd(selectedStroke.points[1], plane);
     });
