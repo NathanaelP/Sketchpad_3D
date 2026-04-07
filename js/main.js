@@ -15,8 +15,6 @@ import {
   deleteStrokesByPlane, moveStrokesToNewPlanePosition,
   copySelectedStroke, pasteStroke, mirrorSelectedStroke,
   setStrokeSelectCallback, setSelectedStrokeColor, clearSelectedStrokeColor,
-  getAnnotations, restoreAnnotation,
-  deleteAnnotationsByPlane, moveAnnotationsToNewPlanePosition,
   selectAllStrokes, deleteSelectedStrokes,
 } from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
@@ -50,7 +48,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // 4. Save callback — called after every mutation
   const bookmarks = saved?.bookmarks ? [...saved.bookmarks] : [];
-  const saveCb = () => save(getAllPlanes(), getStrokes(), getAnnotations(), bookmarks);
+  const saveCb = () => save(getAllPlanes(), getStrokes(), bookmarks);
 
   // 5. Drawing system
   initDrawing(scene, getCamera(), getRenderer(), getActivePlane, saveCb);
@@ -63,11 +61,6 @@ window.addEventListener('DOMContentLoaded', () => {
     getAllPlanes().forEach(plane => {
       if (!plane.linesVisible) setPlaneStrokesVisible(plane.id, false);
     });
-  }
-
-  // 6b. Restore saved annotations
-  if (saved?.annotations?.length) {
-    saved.annotations.forEach(a => restoreAnnotation(a));
   }
 
   // 7. UI: toolbar, panel, plane list
@@ -102,7 +95,6 @@ window.addEventListener('DOMContentLoaded', () => {
         const { x: ox, y: oy, z: oz } = plane.position;
         setPlanePosition(planeId, x, y, z);
         moveStrokesToNewPlanePosition(planeId, x - ox, y - oy, z - oz);
-        moveAnnotationsToNewPlanePosition(planeId, x - ox, y - oy, z - oz);
         saveCb();
       },
       setPlaneRotation: (planeId, rx, ry, rz) => {
@@ -119,7 +111,6 @@ window.addEventListener('DOMContentLoaded', () => {
     },
     (planeId) => {
       deleteStrokesByPlane(planeId);
-      deleteAnnotationsByPlane(planeId);
       deletePlane(planeId);
       updatePlaneList(getAllPlanes());
       saveCb();
@@ -262,7 +253,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   document.getElementById('export-json-btn')?.addEventListener('click', () => {
-    downloadFile(exportJSON(getAllPlanes(), getStrokes(), getAnnotations(), bookmarks), 'sketch.json', 'application/json');
+    downloadFile(exportJSON(getAllPlanes(), getStrokes(), bookmarks), 'sketch.json', 'application/json');
   });
 
   document.getElementById('export-svg-btn')?.addEventListener('click', () => {
@@ -293,7 +284,6 @@ window.addEventListener('DOMContentLoaded', () => {
         // Restore from imported data
         data.planes.forEach(p => restorePlane(p));
         data.strokes.forEach(s => restoreStroke(s));
-        if (data.annotations?.length) data.annotations.forEach(a => restoreAnnotation(a));
         // Restore bookmarks
         bookmarks.splice(0, bookmarks.length, ...(data.bookmarks || []));
         renderBookmarkList();
