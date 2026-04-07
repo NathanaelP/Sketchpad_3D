@@ -428,6 +428,87 @@ html, body {
 }
 
 /* ── File I/O buttons ── */
+#bookmarks-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+#bookmarks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.bookmarks-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+#save-view-btn {
+  padding: 3px 9px;
+  background: rgba(79, 195, 247, 0.1);
+  border: 1px solid rgba(79, 195, 247, 0.28);
+  color: var(--accent-blue);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+  touch-action: manipulation;
+}
+#save-view-btn:hover { background: rgba(79, 195, 247, 0.2); }
+
+#bookmark-list { display: flex; flex-direction: column; gap: 3px; }
+
+.bookmark-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.bookmark-row:hover { background: rgba(255, 255, 255, 0.06); }
+
+.bookmark-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.bookmark-name-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--accent-blue);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 2px 5px;
+}
+
+.bookmark-del {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.12s;
+  touch-action: manipulation;
+}
+.bookmark-del:hover { color: #ef5350; }
+
 #file-btns {
   display: flex;
   gap: 6px;
@@ -704,6 +785,21 @@ html, body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
 }
 
+.annotation-label {
+  position: absolute;
+  background: rgba(22, 22, 40, 0.88);
+  color: #FFD54F;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 213, 79, 0.45);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  user-select: none;
+}
+
 /* ── Desktop: panel pushes canvas ── */
 /* Panel open/close is handled by the global .open class rules (same as mobile).   */
 /* initUI adds .open to both #side-panel and #panel-tab on desktop startup.        */
@@ -729,7 +825,7 @@ html, body {
   #active-tool-label  { display: none; }
   #toolbar            { gap: 4px; padding: 0 8px; }
   .tool-group         { gap: 2px; }
-  .tool-btn           { padding: 4px 8px; font-size: 12px; }
+  .tool-btn           { padding: 4px 6px; font-size: 11px; }
   #undo-btn,
   #menu-btn,
   #snap-btn           { width: 32px; height: 32px; font-size: 16px; }

@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'sketchpad_autosave';
 
-export function save(planes, strokes) {
+export function save(planes, strokes, annotations, bookmarks) {
   const data = {
     version: 1,
     planes: planes.map(p => ({
@@ -26,6 +26,18 @@ export function save(planes, strokes) {
       points:           s.points.map(pt => ({ x: pt.x, y: pt.y, z: pt.z })),
       snapConnections:  [...s.snapConnections],
     })),
+    annotations: (annotations || []).map(a => ({
+      id:      a.id,
+      planeId: a.planeId,
+      p1:      { ...a.p1 },
+      p2:      { ...a.p2 },
+    })),
+    bookmarks: (bookmarks || []).map(b => ({
+      id:       b.id,
+      name:     b.name,
+      position: { ...b.position },
+      target:   { ...b.target },
+    })),
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -43,7 +55,7 @@ export function load() {
   }
 }
 
-export function exportJSON(planes, strokes) {
+export function exportJSON(planes, strokes, annotations, bookmarks) {
   return JSON.stringify({
     version: 1,
     exportedAt: new Date().toISOString(),
@@ -69,6 +81,18 @@ export function exportJSON(planes, strokes) {
       strokeColor:     s.strokeColor ?? null,
       points:          s.points.map(pt => ({ x: pt.x, y: pt.y, z: pt.z })),
       snapConnections: [...s.snapConnections],
+    })),
+    annotations: (annotations || []).map(a => ({
+      id:      a.id,
+      planeId: a.planeId,
+      p1:      { ...a.p1 },
+      p2:      { ...a.p2 },
+    })),
+    bookmarks: (bookmarks || []).map(b => ({
+      id:       b.id,
+      name:     b.name,
+      position: { ...b.position },
+      target:   { ...b.target },
     })),
   }, null, 2);
 }

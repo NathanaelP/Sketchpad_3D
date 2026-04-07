@@ -391,10 +391,10 @@ Each phase should result in something testable on a real device before moving on
 - [x] Copy / paste strokes (duplicate within or across planes)
 - [x] Mirror / reflect tool (flip selected strokes across a plane axis)
 - [x] Stroke color override (per-stroke color independent of plane color)
-- [ ] Measurement annotations (place a labeled dimension line between two points)
-- [ ] Camera bookmarks (save and restore named viewpoints)
-- [ ] Select-all and multi-stroke selection (tap-drag lasso or Ctrl+A)
-- [ ] Group strokes and move them as a unit
+- [x] Measurement annotations (place a labeled dimension line between two points)
+- [x] Camera bookmarks (save and restore named viewpoints)
+- [x] Select-all and multi-stroke selection (tap-drag lasso or Ctrl+A)
+- [x] Group strokes and move them as a unit
 
 ---
 

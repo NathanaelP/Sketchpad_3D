@@ -1,4 +1,4 @@
-import { initViewport, getScene, getCamera, getRenderer, startRenderLoop } from './viewport.js';
+import { initViewport, getScene, getCamera, getRenderer, startRenderLoop, getCameraState, animateCameraTo } from './viewport.js';
 import {
   initPlanes, createDefaultPlane, addPlane,
   getActivePlane, getAllPlanes, getPlaneById,
@@ -15,6 +15,9 @@ import {
   deleteStrokesByPlane, moveStrokesToNewPlanePosition,
   copySelectedStroke, pasteStroke, mirrorSelectedStroke,
   setStrokeSelectCallback, setSelectedStrokeColor, clearSelectedStrokeColor,
+  getAnnotations, restoreAnnotation,
+  deleteAnnotationsByPlane, moveAnnotationsToNewPlanePosition,
+  selectAllStrokes, deleteSelectedStrokes,
 } from './drawing.js';
 import { initUI, updatePlaneList } from './ui.js';
 import { save, load, exportJSON, importJSON } from './storage.js';
@@ -46,7 +49,8 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   // 4. Save callback — called after every mutation
-  const saveCb = () => save(getAllPlanes(), getStrokes());
+  const bookmarks = saved?.bookmarks ? [...saved.bookmarks] : [];
+  const saveCb = () => save(getAllPlanes(), getStrokes(), getAnnotations(), bookmarks);
 
   // 5. Drawing system
   initDrawing(scene, getCamera(), getRenderer(), getActivePlane, saveCb);
@@ -59,6 +63,11 @@ window.addEventListener('DOMContentLoaded', () => {
     getAllPlanes().forEach(plane => {
       if (!plane.linesVisible) setPlaneStrokesVisible(plane.id, false);
     });
+  }
+
+  // 6b. Restore saved annotations
+  if (saved?.annotations?.length) {
+    saved.annotations.forEach(a => restoreAnnotation(a));
   }
 
   // 7. UI: toolbar, panel, plane list
@@ -93,6 +102,7 @@ window.addEventListener('DOMContentLoaded', () => {
         const { x: ox, y: oy, z: oz } = plane.position;
         setPlanePosition(planeId, x, y, z);
         moveStrokesToNewPlanePosition(planeId, x - ox, y - oy, z - oz);
+        moveAnnotationsToNewPlanePosition(planeId, x - ox, y - oy, z - oz);
         saveCb();
       },
       setPlaneRotation: (planeId, rx, ry, rz) => {
@@ -109,6 +119,7 @@ window.addEventListener('DOMContentLoaded', () => {
     },
     (planeId) => {
       deleteStrokesByPlane(planeId);
+      deleteAnnotationsByPlane(planeId);
       deletePlane(planeId);
       updatePlaneList(getAllPlanes());
       saveCb();
@@ -137,6 +148,69 @@ window.addEventListener('DOMContentLoaded', () => {
       snapBtn.title = nowEnabled ? 'Snapping on — click to disable' : 'Snapping off — click to enable';
     });
   }
+
+  // 9a. Camera bookmarks
+  function renderBookmarkList() {
+    const list = document.getElementById('bookmark-list');
+    if (!list) return;
+    list.innerHTML = '';
+    bookmarks.forEach((bm, idx) => {
+      const row = document.createElement('div');
+      row.className = 'bookmark-row';
+
+      const nameEl = document.createElement('span');
+      nameEl.className = 'bookmark-name';
+      nameEl.textContent = bm.name;
+      nameEl.title = 'Click to restore this view';
+      nameEl.addEventListener('click', () => animateCameraTo(bm.position, bm.target));
+
+      // Double-tap / dblclick to rename
+      nameEl.addEventListener('dblclick', (ev) => {
+        ev.stopPropagation();
+        const input = document.createElement('input');
+        input.className = 'bookmark-name-input';
+        input.value = bm.name;
+        row.replaceChild(input, nameEl);
+        input.focus();
+        input.select();
+        const commit = () => {
+          const v = input.value.trim();
+          if (v) { bm.name = v; saveCb(); }
+          row.replaceChild(nameEl, input);
+          nameEl.textContent = bm.name;
+        };
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', (ke) => {
+          if (ke.key === 'Enter') { ke.preventDefault(); commit(); }
+          if (ke.key === 'Escape') { row.replaceChild(nameEl, input); }
+        });
+      });
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'bookmark-del';
+      delBtn.textContent = '🗑';
+      delBtn.title = 'Delete bookmark';
+      delBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        bookmarks.splice(idx, 1);
+        saveCb();
+        renderBookmarkList();
+      });
+
+      row.append(nameEl, delBtn);
+      list.appendChild(row);
+    });
+  }
+
+  document.getElementById('save-view-btn')?.addEventListener('click', () => {
+    const state = getCameraState();
+    const num   = bookmarks.length + 1;
+    bookmarks.push({ id: 'bm_' + Date.now(), name: `View ${num}`, ...state });
+    saveCb();
+    renderBookmarkList();
+  });
+
+  renderBookmarkList();
 
   // 9. Duplicate button + keyboard copy/paste shortcuts
   const dupBtn = document.getElementById('duplicate-btn');
@@ -170,6 +244,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key === 'a') { e.preventDefault(); selectAllStrokes(); }
     if (mod && e.key === 'c') { e.preventDefault(); copySelectedStroke(); }
     if (mod && e.key === 'v') { e.preventDefault(); if (pasteStroke()) updatePlaneList(getAllPlanes()); }
     if (mod && e.key === 'd') { e.preventDefault(); copySelectedStroke(); if (pasteStroke()) updatePlaneList(getAllPlanes()); }
@@ -187,7 +262,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   document.getElementById('export-json-btn')?.addEventListener('click', () => {
-    downloadFile(exportJSON(getAllPlanes(), getStrokes()), 'sketch.json', 'application/json');
+    downloadFile(exportJSON(getAllPlanes(), getStrokes(), getAnnotations(), bookmarks), 'sketch.json', 'application/json');
   });
 
   document.getElementById('export-svg-btn')?.addEventListener('click', () => {
@@ -210,11 +285,18 @@ window.addEventListener('DOMContentLoaded', () => {
       try {
         const data = importJSON(ev.target.result);
         // Clear existing state
-        getAllPlanes().forEach(p => deleteStrokesByPlane(p.id));
+        getAllPlanes().forEach(p => {
+          deleteStrokesByPlane(p.id);
+          deleteAnnotationsByPlane(p.id);
+        });
         clearAllPlanes();
         // Restore from imported data
         data.planes.forEach(p => restorePlane(p));
         data.strokes.forEach(s => restoreStroke(s));
+        if (data.annotations?.length) data.annotations.forEach(a => restoreAnnotation(a));
+        // Restore bookmarks
+        bookmarks.splice(0, bookmarks.length, ...(data.bookmarks || []));
+        renderBookmarkList();
         // Activate the plane that was active at export time
         const active = data.planes.find(p => p.active);
         if (active) setActivePlane(active.id);

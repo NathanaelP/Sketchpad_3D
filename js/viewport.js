@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 let scene, camera, renderer, controls;
+let cameraAnimation = null; // { targetPos, targetLookAt } — lerp animation state
 
 export function initViewport(canvasElement) {
   // Scene
@@ -53,9 +54,36 @@ export function getCamera() { return camera; }
 export function getRenderer() { return renderer; }
 export function getControls() { return controls; }
 
+export function getCameraState() {
+  return {
+    position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+    target:   { x: controls.target.x, y: controls.target.y, z: controls.target.z },
+  };
+}
+
+export function animateCameraTo(position, target) {
+  cameraAnimation = {
+    targetPos:    new THREE.Vector3(position.x, position.y, position.z),
+    targetLookAt: new THREE.Vector3(target.x, target.y, target.z),
+  };
+}
+
+function tickCameraAnimation() {
+  if (!cameraAnimation) return;
+  const { targetPos, targetLookAt } = cameraAnimation;
+  camera.position.lerp(targetPos, 0.12);
+  controls.target.lerp(targetLookAt, 0.12);
+  if (camera.position.distanceTo(targetPos) < 0.005 && controls.target.distanceTo(targetLookAt) < 0.005) {
+    camera.position.copy(targetPos);
+    controls.target.copy(targetLookAt);
+    cameraAnimation = null;
+  }
+}
+
 export function startRenderLoop() {
   function loop() {
     requestAnimationFrame(loop);
+    tickCameraAnimation();
     controls.update(); // required when enableDamping is true
     renderer.render(scene, camera);
   }
