@@ -803,6 +803,8 @@ html, body {
 
 #viewport-canvas.tool-freehand { cursor: crosshair; }
 #viewport-canvas.tool-erase    { cursor: cell; }
+#viewport-canvas.tool-rect     { cursor: crosshair; }
+#viewport-canvas.tool-circle   { cursor: crosshair; }
 #viewport-canvas.tool-orbit    { cursor: grab; }
 #viewport-canvas.tool-orbit:active { cursor: grabbing; }
 

@@ -137,6 +137,20 @@ function removeLinePreview() {
   linePreviewLine = null;
 }
 
+// Generic multi-point shape preview (rect, circle) — reuses linePreviewLine object
+function updateShapePreview(pts, color) {
+  const vecs = pts.map(p => new THREE.Vector3(p.x, p.y, p.z));
+  if (!linePreviewLine) {
+    const geo = new THREE.BufferGeometry().setFromPoints(vecs);
+    const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(color), opacity: 0.45, transparent: true });
+    linePreviewLine = new THREE.Line(geo, mat);
+    scene.add(linePreviewLine);
+  } else {
+    linePreviewLine.geometry.setFromPoints(vecs);
+    linePreviewLine.geometry.attributes.position.needsUpdate = true;
+  }
+}
+
 function showDimensionLabel(clientX, clientY, p1, p2, plane) {
   if (!dimensionLabel) {
     const overlay = document.getElementById('dimension-overlay');
@@ -743,10 +757,10 @@ function handleAnnotatePointerUp(e) {
 
 // ─── Pointer handlers ─────────────────────────────────────────────────────────
 function onPointerDown(e) {
-  if (activeTool === 'line' || activeTool === 'erase' || activeTool === 'annotate') {
+  if (activeTool === 'line' || activeTool === 'rect' || activeTool === 'circle' || activeTool === 'erase' || activeTool === 'annotate') {
     pointerDownPos = { x: e.clientX, y: e.clientY };
-    if (activeTool === 'line') {
-      // Capture snap and screen position at exact touch-down — lift position can be 8-15 px off on mobile
+    if (activeTool === 'line' || activeTool === 'rect' || activeTool === 'circle') {
+      // Capture snap at touch-down — lift position can be 8-15 px off on mobile
       pendingLineStartSnap  = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
       pendingStartScreenPos = { x: e.clientX, y: e.clientY };
     }
@@ -818,6 +832,36 @@ function onPointerMove(e) {
     fillCoordEnd(endPt, plane);
     fillCoordPolar(endPt, plane);
 
+  } else if ((activeTool === 'rect' || activeTool === 'circle') && drawState === STATE_AWAITING_SECOND) {
+    const plane = getActivePlaneFn();
+    if (!plane || !plane.meshRef || !startPoint) return;
+    const snap = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
+    let endPt;
+    if (snap) {
+      showSnapIndicator(snap.point, plane.normal);
+      endPt = snap.point;
+    } else {
+      hideSnapIndicator();
+      const raw = getPlaneIntersection(e, plane.meshRef);
+      if (!raw) { hideDimensionLabel(); return; }
+      endPt = applyGridSnap({ x: raw.x, y: raw.y, z: raw.z }, plane);
+    }
+    if (activeTool === 'rect') {
+      const l1 = worldToPlaneLocal(startPoint, plane);
+      const l2 = worldToPlaneLocal(endPt, plane);
+      const pts = [
+        planeLocalToWorld(l1.x, l1.y, plane),
+        planeLocalToWorld(l2.x, l1.y, plane),
+        planeLocalToWorld(l2.x, l2.y, plane),
+        planeLocalToWorld(l1.x, l2.y, plane),
+        planeLocalToWorld(l1.x, l1.y, plane),
+      ];
+      updateShapePreview(pts, plane.color);
+    } else {
+      updateShapePreview(computeCircleGeometry(startPoint, endPt, plane), plane.color);
+    }
+    showDimensionLabel(e.clientX, e.clientY, startPoint, endPt, plane);
+
   } else if (drawState === PLANE_DRAG) {
     handleGizmoDrag(e);
 
@@ -834,7 +878,7 @@ function onPointerMove(e) {
       updateLassoDisplay(lassoState.startX, lassoState.startY, e.clientX, e.clientY);
     }
 
-  } else if ((activeTool === 'line' || activeTool === 'freehand') && drawState === STATE_IDLE) {
+  } else if ((activeTool === 'line' || activeTool === 'freehand' || activeTool === 'rect' || activeTool === 'circle') && drawState === STATE_IDLE) {
     // Show snap ring while hovering before the first point is placed
     const plane = getActivePlaneFn();
     if (!plane) return;
@@ -902,6 +946,14 @@ function onPointerUp(e) {
       const stroke = strokes.find(s => s.lineRef === hits[0].object);
       if (stroke) deleteStroke(stroke.id);
     }
+
+  } else if (activeTool === 'rect' || activeTool === 'circle') {
+    if (!pointerDownPos) return;
+    const dx = e.clientX - pointerDownPos.x;
+    const dy = e.clientY - pointerDownPos.y;
+    pointerDownPos = null;
+    if (Math.hypot(dx, dy) >= TAP_MOVE_THRESHOLD) return; // orbit gesture, not tap
+    handleShapeTap(e);
 
   } else if (activeTool === 'annotate') {
     if (!pointerDownPos) return;
@@ -1014,6 +1066,129 @@ function cancelCurrentStroke() {
   pendingLineStartSnap  = null;
   pendingStartScreenPos = null;
   drawState             = STATE_IDLE;
+}
+
+// ─── Rect / Circle tool ───────────────────────────────────────────────────────
+function handleShapeTap(e) {
+  const plane = getActivePlaneFn();
+  if (!plane || !plane.meshRef) return;
+
+  if (drawState === STATE_IDLE) {
+    const pdx = pendingStartScreenPos?.x ?? e.clientX;
+    const pdy = pendingStartScreenPos?.y ?? e.clientY;
+    pendingStartScreenPos = null;
+    const snap  = pendingLineStartSnap ?? snapEndpoint(pdx, pdy) ?? snapLine(pdx, pdy);
+    pendingLineStartSnap  = null;
+    const point = snap
+      ? new THREE.Vector3(snap.point.x, snap.point.y, snap.point.z)
+      : (() => {
+          const raw = getPlaneIntersection({ clientX: pdx, clientY: pdy }, plane.meshRef);
+          if (!raw) return null;
+          const g = applyGridSnap({ x: raw.x, y: raw.y, z: raw.z }, plane);
+          return new THREE.Vector3(g.x, g.y, g.z);
+        })();
+    if (!point) return;
+
+    startPoint = point;
+    placeStartMarker(startPoint, plane.color);
+    hideSnapIndicator();
+    drawState = STATE_AWAITING_SECOND;
+
+  } else if (drawState === STATE_AWAITING_SECOND) {
+    const snap  = snapEndpoint(e.clientX, e.clientY) ?? snapLine(e.clientX, e.clientY);
+    const point = snap
+      ? new THREE.Vector3(snap.point.x, snap.point.y, snap.point.z)
+      : (() => {
+          const raw = getPlaneIntersection(e, plane.meshRef);
+          if (!raw) return null;
+          const g = applyGridSnap({ x: raw.x, y: raw.y, z: raw.z }, plane);
+          return new THREE.Vector3(g.x, g.y, g.z);
+        })();
+    if (!point) return;
+
+    if (activeTool === 'rect') {
+      commitRect(startPoint, point, plane);
+    } else {
+      commitCircle(startPoint, point, plane);
+    }
+    hideSnapIndicator();
+    removeLinePreview();
+    hideDimensionLabel();
+    cancelCurrentStroke();
+  }
+}
+
+function commitRect(p1, p2, plane) {
+  // Compute 4 right-angle corners in plane-local space, then convert back to world
+  const l1 = worldToPlaneLocal(p1, plane);
+  const l2 = worldToPlaneLocal(p2, plane);
+  const controlPoints = [
+    { ...planeLocalToWorld(l1.x, l1.y, plane) },
+    { ...planeLocalToWorld(l2.x, l1.y, plane) },
+    { ...planeLocalToWorld(l2.x, l2.y, plane) },
+    { ...planeLocalToWorld(l1.x, l2.y, plane) },
+  ].map(p => ({ x: p.x, y: p.y, z: p.z }));
+
+  const lineObj     = buildLineObject([...controlPoints, controlPoints[0]], plane.color, true);
+  const handleGroup = buildHandleGroup(controlPoints, plane.color);
+  handleGroup.visible = false;
+
+  const strokeGroup = new THREE.Group();
+  strokeGroup.add(lineObj);
+  strokeGroup.add(handleGroup);
+  scene.add(strokeGroup);
+
+  const stroke = {
+    id:              `stroke_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    planeId:         plane.id,
+    type:            'rect',
+    color:           plane.color,
+    strokeColor:     null,
+    selected:        false,
+    points:          controlPoints,
+    snapConnections: [],
+    threeObject:     strokeGroup,
+    lineRef:         lineObj,
+    handleGroupRef:  handleGroup,
+  };
+  handleGroup.children.forEach(mesh => { mesh.userData.strokeId = stroke.id; });
+  strokes.push(stroke);
+  pushHistory({ action: 'add_stroke', strokeId: stroke.id });
+  saveCb?.();
+}
+
+function commitCircle(centerPt, rimPt, plane) {
+  const controlPoints = [
+    { x: centerPt.x, y: centerPt.y, z: centerPt.z },
+    { x: rimPt.x,    y: rimPt.y,    z: rimPt.z    },
+  ];
+  const geomPts     = computeCircleGeometry(centerPt, rimPt, plane);
+  const lineObj     = buildLineObject(geomPts, plane.color, true);
+  const handleGroup = buildHandleGroup(controlPoints, plane.color);
+  handleGroup.visible = false;
+
+  const strokeGroup = new THREE.Group();
+  strokeGroup.add(lineObj);
+  strokeGroup.add(handleGroup);
+  scene.add(strokeGroup);
+
+  const stroke = {
+    id:              `stroke_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    planeId:         plane.id,
+    type:            'circle',
+    color:           plane.color,
+    strokeColor:     null,
+    selected:        false,
+    points:          controlPoints,
+    snapConnections: [],
+    threeObject:     strokeGroup,
+    lineRef:         lineObj,
+    handleGroupRef:  handleGroup,
+  };
+  handleGroup.children.forEach(mesh => { mesh.userData.strokeId = stroke.id; });
+  strokes.push(stroke);
+  pushHistory({ action: 'add_stroke', strokeId: stroke.id });
+  saveCb?.();
 }
 
 // ─── Freehand tool ────────────────────────────────────────────────────────────
@@ -1222,6 +1397,14 @@ function handleSelectPointerDown(e) {
         handleMesh: hitMesh,
         oldPoint: { ...stroke.points[pointIndex] },
       };
+      // For circle center drag, pre-compute vector from center to rim so it moves rigidly
+      if (stroke.type === 'circle' && pointIndex === 0) {
+        dragState.rimOffset = {
+          x: stroke.points[1].x - stroke.points[0].x,
+          y: stroke.points[1].y - stroke.points[0].y,
+          z: stroke.points[1].z - stroke.points[0].z,
+        };
+      }
       drawState = SELECT_HANDLE_DRAGGING;
       renderer.domElement.setPointerCapture(e.pointerId);
       return;
@@ -1262,6 +1445,14 @@ function handleSelectDrag(e) {
   if (!pt) return;
 
   const { stroke, pointIndex, handleMesh } = dragState;
+
+  // Circle center drag: move rim by same rigid offset so the circle translates without resizing
+  if (stroke.type === 'circle' && pointIndex === 0 && dragState.rimOffset) {
+    const ro = dragState.rimOffset;
+    stroke.points[1] = { x: pt.x + ro.x, y: pt.y + ro.y, z: pt.z + ro.z };
+    stroke.handleGroupRef.children[1]?.position.set(stroke.points[1].x, stroke.points[1].y, stroke.points[1].z);
+  }
+
   stroke.points[pointIndex] = { x: pt.x, y: pt.y, z: pt.z };
   handleMesh.position.set(pt.x, pt.y, pt.z);
   regenerateStrokeGeometry(stroke);
@@ -1384,10 +1575,10 @@ function deselectAll() {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function buildLineObject(controlPoints, color) {
-  const splinePoints = catmullRomCurve(controlPoints, 20);
-  const positions    = splinePoints.flatMap(p => [p.x, p.y, p.z]);
-  const geo          = new LineGeometry();
+function buildLineObject(controlPoints, color, noSmooth = false) {
+  const pts      = noSmooth ? controlPoints : catmullRomCurve(controlPoints, 20);
+  const positions = pts.flatMap(p => [p.x, p.y, p.z]);
+  const geo       = new LineGeometry();
   geo.setPositions(positions);
   const mat = new LineMaterial({
     color:      new THREE.Color(color),
@@ -1396,6 +1587,31 @@ function buildLineObject(controlPoints, color) {
     resolution: new THREE.Vector2(renderer.domElement.clientWidth, renderer.domElement.clientHeight),
   });
   return new Line2(geo, mat);
+}
+
+// Compute 65 world-space points along a circle (closed loop) from center + rim point
+function computeCircleGeometry(centerPt, rimPt, plane) {
+  const c      = worldToPlaneLocal(centerPt, plane);
+  const r      = worldToPlaneLocal(rimPt, plane);
+  const radius = Math.sqrt((r.x - c.x) ** 2 + (r.y - c.y) ** 2);
+  const N      = 64;
+  const pts    = [];
+  for (let i = 0; i <= N; i++) {
+    const θ  = (i / N) * Math.PI * 2;
+    const wp = planeLocalToWorld(c.x + radius * Math.cos(θ), c.y + radius * Math.sin(θ), plane);
+    pts.push({ x: wp.x, y: wp.y, z: wp.z });
+  }
+  return pts;
+}
+
+// Returns geometry points appropriate for buildLineObject given the stroke type.
+// For circle: computes circumference points from the 2 semantic points.
+// For rect: closes the 4-corner loop.
+// For line/freehand: returns points as-is (buildLineObject applies Catmull-Rom).
+function getStrokeGeomPoints(type, points, plane) {
+  if (type === 'circle') return plane ? computeCircleGeometry(points[0], points[1], plane) : points;
+  if (type === 'rect')   return [...points, points[0]];
+  return points;
 }
 
 function buildHandleGroup(controlPoints, color) {
@@ -1416,8 +1632,16 @@ function buildHandleGroup(controlPoints, color) {
 }
 
 function regenerateStrokeGeometry(stroke) {
-  const splinePoints = catmullRomCurve(stroke.points, 20);
-  const positions    = splinePoints.flatMap(p => [p.x, p.y, p.z]);
+  let pts;
+  if (stroke.type === 'circle') {
+    const plane = getPlaneById(stroke.planeId);
+    pts = plane ? computeCircleGeometry(stroke.points[0], stroke.points[1], plane) : catmullRomCurve(stroke.points, 20);
+  } else if (stroke.type === 'rect') {
+    pts = [...stroke.points, stroke.points[0]];
+  } else {
+    pts = catmullRomCurve(stroke.points, 20);
+  }
+  const positions = pts.flatMap(p => [p.x, p.y, p.z]);
   stroke.lineRef.geometry.setPositions(positions);
   stroke.lineRef.computeLineDistances();
 }
@@ -1620,17 +1844,17 @@ export function deleteStrokesByPlane(planeId) {
 }
 
 export function setActiveTool(toolName) {
+  const prevTool = activeTool;
+
   if (drawState === STATE_FREEHAND_DRAWING) cancelFreehand();
-  if (activeTool === 'select' && toolName !== 'select') {
-    deselectAll();
-    hideLassoRectEl();
-    lassoState = null;
-  }
-  if (activeTool === 'annotate' && toolName !== 'annotate') clearDimSelection();
+  if (prevTool === 'select'   && toolName !== 'select')   { deselectAll(); hideLassoRectEl(); lassoState = null; }
+  if (prevTool === 'annotate' && toolName !== 'annotate') clearDimSelection();
 
   activeTool = toolName;
 
-  if (toolName !== 'line') cancelCurrentStroke();
+  // Cancel in-progress drawing unless re-selecting the same shape tool
+  const isShapeTool = t => t === 'line' || t === 'rect' || t === 'circle';
+  if (!isShapeTool(toolName) || prevTool !== toolName) cancelCurrentStroke();
 
   if (toolName === 'select') {
     drawState = SELECT_IDLE;
@@ -1647,7 +1871,7 @@ export function setActiveTool(toolName) {
 
   // CSS cursor hint
   if (renderer) {
-    renderer.domElement.classList.remove('tool-line', 'tool-freehand', 'tool-select', 'tool-erase', 'tool-orbit');
+    renderer.domElement.classList.remove('tool-line', 'tool-freehand', 'tool-select', 'tool-erase', 'tool-orbit', 'tool-rect', 'tool-circle');
     renderer.domElement.classList.add(`tool-${toolName}`);
   }
 }
@@ -1665,7 +1889,10 @@ export function getStrokes() {
 // Reconstruct Three.js objects from saved plain data (called on load, no history/saveCb).
 export function restoreStroke(strokeData) {
   const effectiveColor = strokeData.strokeColor || strokeData.color;
-  const lineObj     = buildLineObject(strokeData.points, effectiveColor);
+  const plane          = getPlaneById(strokeData.planeId);
+  const noSmooth       = strokeData.type === 'rect' || strokeData.type === 'circle';
+  const geomPts        = getStrokeGeomPoints(strokeData.type, strokeData.points, plane);
+  const lineObj     = buildLineObject(geomPts, effectiveColor, noSmooth);
   const handleGroup = buildHandleGroup(strokeData.points, effectiveColor);
   handleGroup.visible = false;
 
@@ -1735,8 +1962,10 @@ export function pasteStroke() {
     snapConnections: [],
   };
 
+  const noSmoothPaste = stroke.type === 'rect' || stroke.type === 'circle';
+  const geomPtsPaste  = getStrokeGeomPoints(stroke.type, newPoints, targetPlane);
   stroke.threeObject    = new THREE.Group();
-  stroke.lineRef        = buildLineObject(stroke.points, pasteColor);
+  stroke.lineRef        = buildLineObject(geomPtsPaste, pasteColor, noSmoothPaste);
   stroke.handleGroupRef = buildHandleGroup(stroke.points, pasteColor);
   stroke.handleGroupRef.visible = false;
   stroke.handleGroupRef.children.forEach(m => { m.userData.strokeId = strokeId; });
@@ -1822,8 +2051,10 @@ export function mirrorSelectedStroke(axis) {
     snapConnections: [],
   };
 
+  const noSmoothMirror = stroke.type === 'rect' || stroke.type === 'circle';
+  const geomPtsMirror  = getStrokeGeomPoints(stroke.type, newPoints, plane);
   stroke.threeObject    = new THREE.Group();
-  stroke.lineRef        = buildLineObject(stroke.points, mirrorColor);
+  stroke.lineRef        = buildLineObject(geomPtsMirror, mirrorColor, noSmoothMirror);
   stroke.handleGroupRef = buildHandleGroup(stroke.points, mirrorColor);
   stroke.handleGroupRef.visible = false;
   stroke.handleGroupRef.children.forEach(m => { m.userData.strokeId = strokeId; });
