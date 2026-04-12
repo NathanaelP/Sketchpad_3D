@@ -278,7 +278,6 @@ window.addEventListener('DOMContentLoaded', () => {
         // Clear existing state
         getAllPlanes().forEach(p => {
           deleteStrokesByPlane(p.id);
-          deleteAnnotationsByPlane(p.id);
         });
         clearAllPlanes();
         // Restore from imported data
