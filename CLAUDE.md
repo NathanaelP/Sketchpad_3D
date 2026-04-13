@@ -183,16 +183,24 @@ directly through each control point, which feels natural and intuitive.
 {
   id: "stroke_001",
   planeId: "plane_001",
-  type: "freehand",           // or "line"
+  type: "freehand",           // "line" | "freehand" | "rect" | "circle"
   color: "#4FC3F7",           // inherited from plane
-  points: [                   // Catmull-Rom control points (world space)
+  strokeColor: null,          // per-stroke color override (null = use plane color)
+  points: [                   // world-space points; semantics differ by type:
+    // line/freehand: Catmull-Rom control points (2 for line, N for freehand)
+    // rect: 4 world-space corners [TL, TR, BR, BL] (geometry closes the loop)
+    // circle: [centerPoint, rimPoint] — geometry computed from these 2 on demand
     { x: 0, y: 0, z: 0 },
     { x: 1, y: 2, z: 0 },
-    { x: 3, y: 1.5, z: 0 },
   ],
   snapConnections: []         // IDs of connected stroke endpoints
 }
 ```
+
+**Geometry notes:**
+- `line` / `freehand`: `buildLineObject` applies Catmull-Rom smoothing
+- `rect`: geometry = `[...points, points[0]]` passed directly (no smoothing)
+- `circle`: geometry = 65 world-space points computed via `computeCircleGeometry(center, rim, plane)` — stored as 2 semantic points only; recomputed on every `regenerateStrokeGeometry` call
 
 ---
 
@@ -391,10 +399,20 @@ Each phase should result in something testable on a real device before moving on
 - [x] Copy / paste strokes (duplicate within or across planes)
 - [x] Mirror / reflect tool (flip selected strokes across a plane axis)
 - [x] Stroke color override (per-stroke color independent of plane color)
-- [x] Measurement annotations (place a labeled dimension line between two points)
+- [x] Measurement annotations → redesigned as Dim tool (see Phase 8)
 - [x] Camera bookmarks (save and restore named viewpoints)
 - [x] Select-all and multi-stroke selection (tap-drag lasso or Ctrl+A)
 - [x] Group strokes and move them as a unit
+
+---
+
+### Phase 8 — Shape Tools and Precision Editing
+**Goal:** Add closed shape primitives and make the Dim tool work with them.
+
+- [x] Rectangle tool — two-tap (corner → opposite corner); axis-aligned on the active plane; 4 corner handles draggable in Select mode; snaps to endpoints/grid
+- [x] Circle tool — two-tap (center → rim); 64-segment geometry; center handle translates, rim handle resizes; snaps to endpoints/grid
+- [x] Dim tool extended to circles — tap a circle in Dim mode → "Diameter" input appears; editing resizes circle from center while preserving direction
+- [x] Dim tool extended to rectangles — tap a rect in Dim mode → "W" and "H" inputs appear; each resizes that axis center-pivot independently; Enter commits (undoable)
 
 ---
 
@@ -416,15 +434,16 @@ Each phase should result in something testable on a real device before moving on
 
 ## Current Status
 
-**As of 2026-04-12: Phases 1–7 complete.**
+**As of 2026-04-13: Phases 1–8 complete.**
 
 The app is fully functional for multi-plane 3D sketching on mobile and desktop:
-- Draw straight lines and freehand curves on Front, Top, Right, or any custom-angle plane
+- Draw straight lines, freehand curves, rectangles, and circles on Front, Top, Right, or any custom-angle plane
 - Snap to endpoints and lines with visual indicator; toggle snapping on/off
 - Grid snap with adjustable resolution (0.25 / 0.5 / 1.0 / 2.0) per plane, toggleable
 - Select strokes, drag control points to reshape, delete with key or Erase tool
 - Coordinate input bar: type exact X/Y end point while drawing a line (Cartesian or polar L/°)
-- Live dimension label shows length and angle while drawing
+- Live dimension label shows length/distance while drawing
+- Dim tool: tap any line → edit length; tap any circle → edit diameter; tap any rect → edit W and H independently; all center-pivot, undoable
 - Adjust line width per-session (1–12px) via side panel slider
 - Add, rename, and delete planes; toggle grid and stroke visibility per plane
 - Move planes in 3D via axis-constrained gizmo (X/Y/Z arrows in Select mode)

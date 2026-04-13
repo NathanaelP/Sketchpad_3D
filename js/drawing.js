@@ -524,7 +524,7 @@ function initCoordBar() {
   if (lEl)  lEl.addEventListener('keydown',  onPolarEnter);
   if (paEl) paEl.addEventListener('keydown', onPolarEnter);
 
-  // ── Dim tool length input ───────────────────────────────────────────────────
+  // ── Dim tool: line length / circle diameter input ──────────────────────────
   const dimInp = document.getElementById('dim-length-input');
   if (dimInp) {
     dimInp.addEventListener('input', () => {
@@ -534,10 +534,42 @@ function initCoordBar() {
       const L = parseFloat(dimInp.value);
       if (isNaN(L) || L <= 0) return;
       if (!dimOldPoints) dimOldPoints = dimSelectedStroke.points.map(p => ({ ...p }));
-      applyLengthToStroke(L, dimSelectedStroke, plane);
+      if (dimSelectedStroke.type === 'circle') applyDiameterToStroke(L, dimSelectedStroke, plane);
+      else applyLengthToStroke(L, dimSelectedStroke, plane);
     });
     dimInp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); commitDimEdit(); }
+      if (e.key === 'Escape') { e.preventDefault(); clearDimSelection(); }
+    });
+  }
+
+  // ── Dim tool: rect width / height inputs ───────────────────────────────────
+  const dimWInp = document.getElementById('dim-width-input');
+  const dimHInp = document.getElementById('dim-height-input');
+  function onRectDimInput(newW, newH) {
+    if (activeTool !== 'annotate' || !dimSelectedStroke || dimSelectedStroke.type !== 'rect') return;
+    const plane = getPlaneById(dimSelectedStroke.planeId) || getActivePlaneFn();
+    if (!plane) return;
+    if (!dimOldPoints) dimOldPoints = dimSelectedStroke.points.map(p => ({ ...p }));
+    applyRectDimensions(newW, newH, dimSelectedStroke, plane);
+  }
+  if (dimWInp) {
+    dimWInp.addEventListener('input', () => {
+      const W = parseFloat(dimWInp.value);
+      if (!isNaN(W) && W > 0) onRectDimInput(W, null);
+    });
+    dimWInp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); commitDimEdit(); }
+      if (e.key === 'Escape') { e.preventDefault(); clearDimSelection(); }
+    });
+  }
+  if (dimHInp) {
+    dimHInp.addEventListener('input', () => {
+      const H = parseFloat(dimHInp.value);
+      if (!isNaN(H) && H > 0) onRectDimInput(null, H);
+    });
+    dimHInp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); commitDimEdit(); }
       if (e.key === 'Escape') { e.preventDefault(); clearDimSelection(); }
     });
   }
@@ -687,27 +719,100 @@ function applyLengthToStroke(newLength, stroke, plane) {
   regenerateStrokeGeometry(stroke);
 }
 
+function getCircleDiameter(stroke, plane) {
+  const c = worldToPlaneLocal(stroke.points[0], plane);
+  const r = worldToPlaneLocal(stroke.points[1], plane);
+  return 2 * Math.sqrt((r.x - c.x) ** 2 + (r.y - c.y) ** 2);
+}
+
+function applyDiameterToStroke(newDiameter, stroke, plane) {
+  // Keep center fixed; move rim along existing direction to new radius
+  const c  = worldToPlaneLocal(stroke.points[0], plane);
+  const r  = worldToPlaneLocal(stroke.points[1], plane);
+  const dx = r.x - c.x, dy = r.y - c.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 1e-6) return;
+  const newR = newDiameter / 2;
+  const wp = planeLocalToWorld(c.x + (dx / dist) * newR, c.y + (dy / dist) * newR, plane);
+  stroke.points[1] = { x: wp.x, y: wp.y, z: wp.z };
+  stroke.handleGroupRef?.children[1]?.position.set(wp.x, wp.y, wp.z);
+  regenerateStrokeGeometry(stroke);
+}
+
+function getRectDimensions(stroke, plane) {
+  const lp = stroke.points.map(pt => worldToPlaneLocal(pt, plane));
+  return { w: Math.abs(lp[2].x - lp[0].x), h: Math.abs(lp[2].y - lp[0].y) };
+}
+
+// Resize rect center-pivot. Pass null for newW or newH to keep that dimension unchanged.
+function applyRectDimensions(newW, newH, stroke, plane) {
+  const lp = stroke.points.map(pt => worldToPlaneLocal(pt, plane));
+  const cx = (lp[0].x + lp[2].x) / 2, cy = (lp[0].y + lp[2].y) / 2;
+  const sx = Math.sign(lp[2].x - lp[0].x) || 1;
+  const sy = Math.sign(lp[2].y - lp[0].y) || 1;
+  const hw = (newW !== null ? newW : Math.abs(lp[2].x - lp[0].x)) / 2;
+  const hh = (newH !== null ? newH : Math.abs(lp[2].y - lp[0].y)) / 2;
+  const corners = [
+    planeLocalToWorld(cx - sx * hw, cy - sy * hh, plane),
+    planeLocalToWorld(cx + sx * hw, cy - sy * hh, plane),
+    planeLocalToWorld(cx + sx * hw, cy + sy * hh, plane),
+    planeLocalToWorld(cx - sx * hw, cy + sy * hh, plane),
+  ];
+  corners.forEach((wp, i) => {
+    stroke.points[i] = { x: wp.x, y: wp.y, z: wp.z };
+    stroke.handleGroupRef?.children[i]?.position.set(wp.x, wp.y, wp.z);
+  });
+  regenerateStrokeGeometry(stroke);
+}
+
 function showDimBar(stroke, plane) {
-  const bar    = document.getElementById('coord-bar');
-  const dimRow = document.getElementById('coord-row-dim');
-  if (!bar || !dimRow) return;
+  const bar = document.getElementById('coord-bar');
+  if (!bar) return;
   ['coord-row-start', 'coord-row-end', 'coord-row-polar', 'coord-row-angle'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
   const goBtn = document.getElementById('coord-go');
   if (goBtn) goBtn.style.display = 'none';
-  const inp = document.getElementById('dim-length-input');
-  if (inp) inp.value = getStrokeLength(stroke, plane).toFixed(2);
-  dimRow.style.display = 'flex';
-  bar.style.display    = 'flex';
-  inp?.focus();
-  inp?.select();
+
+  const dimRow     = document.getElementById('coord-row-dim');
+  const dimRectRow = document.getElementById('coord-row-dim-rect');
+
+  if (stroke.type === 'rect') {
+    if (dimRow)     dimRow.style.display     = 'none';
+    if (dimRectRow) {
+      const { w, h } = getRectDimensions(stroke, plane);
+      const wInp = document.getElementById('dim-width-input');
+      const hInp = document.getElementById('dim-height-input');
+      if (wInp) { wInp.value = w.toFixed(2); }
+      if (hInp) { hInp.value = h.toFixed(2); }
+      dimRectRow.style.display = 'flex';
+      wInp?.focus(); wInp?.select();
+    }
+  } else {
+    if (dimRectRow) dimRectRow.style.display = 'none';
+    if (dimRow) {
+      const label = dimRow.querySelector('.coord-row-label');
+      if (label) label.textContent = stroke.type === 'circle' ? 'Diameter' : 'Length';
+      const inp = document.getElementById('dim-length-input');
+      if (inp) {
+        inp.value = stroke.type === 'circle'
+          ? getCircleDiameter(stroke, plane).toFixed(2)
+          : getStrokeLength(stroke, plane).toFixed(2);
+      }
+      dimRow.style.display = 'flex';
+      inp?.focus(); inp?.select();
+    }
+  }
+  bar.style.display = 'flex';
 }
 
 function hideDimBar() {
   const bar = document.getElementById('coord-bar');
   if (bar) bar.style.display = 'none';
+  // Reset label for next use
+  const label = document.getElementById('coord-row-dim')?.querySelector('.coord-row-label');
+  if (label) label.textContent = 'Length';
 }
 
 function commitDimEdit() {
@@ -738,7 +843,7 @@ function handleAnnotatePointerUp(e) {
   const hits = raycaster.intersectObjects(strokes.map(s => s.lineRef).filter(Boolean));
   const stroke = hits.length > 0 ? strokes.find(s => s.lineRef === hits[0].object) : null;
 
-  if (!stroke || stroke.type !== 'line') {
+  if (!stroke || !['line', 'circle', 'rect'].includes(stroke.type)) {
     clearDimSelection();
     return;
   }
@@ -1781,6 +1886,11 @@ export function undoLast() {
         fillCoordEnd(stroke.points[1], plane);
         fillCoordAngle(stroke, plane);
       }
+    }
+    // Refresh dim bar if this stroke is currently dim-selected
+    if (dimSelectedStroke?.id === stroke.id && activeTool === 'annotate') {
+      const plane = getPlaneById(stroke.planeId) || getActivePlaneFn();
+      if (plane) showDimBar(stroke, plane);
     }
     saveCb?.();
 
