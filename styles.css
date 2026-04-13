@@ -684,7 +684,8 @@ html, body {
   gap: 6px;
 }
 
-#coord-row-dim { display: none; }
+#coord-row-dim      { display: none; }
+#coord-row-dim-rect { display: none; }
 
 .coord-row-label {
   font-size: 10px;
