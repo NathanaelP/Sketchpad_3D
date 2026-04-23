@@ -840,7 +840,7 @@ function clearDimSelection() {
 function handleAnnotatePointerUp(e) {
   pointerDownPos = null;
   setNDC(e);
-  const hits = raycaster.intersectObjects(strokes.map(s => s.lineRef).filter(Boolean));
+  const hits = intersectStrokes(e);
   const stroke = hits.length > 0 ? strokes.find(s => s.lineRef === hits[0].object) : null;
 
   if (!stroke || !['line', 'circle', 'rect'].includes(stroke.type)) {
@@ -1046,7 +1046,7 @@ function onPointerUp(e) {
     pointerDownPos = null;
     if (Math.hypot(dx, dy) >= TAP_MOVE_THRESHOLD) return; // orbit gesture, not tap
     setNDC(e);
-    const hits = raycaster.intersectObjects(strokes.map(s => s.lineRef).filter(Boolean));
+    const hits = intersectStrokes(e);
     if (hits.length > 0) {
       const stroke = strokes.find(s => s.lineRef === hits[0].object);
       if (stroke) deleteStroke(stroke.id);
@@ -1517,8 +1517,7 @@ function handleSelectPointerDown(e) {
   }
 
   // 2. Try line geometries (Line2 uses pixel-space threshold based on linewidth)
-  const allLineRefs = strokes.map(s => s.lineRef).filter(Boolean);
-  const lineHits    = raycaster.intersectObjects(allLineRefs);
+  const lineHits = intersectStrokes(e);
   if (lineHits.length > 0) {
     const stroke = strokes.find(s => s.lineRef === lineHits[0].object);
     if (stroke) {
@@ -1808,6 +1807,23 @@ function setNDC(event) {
   const ndcX   =  ((event.clientX - rect.left) / rect.width)  * 2 - 1;
   const ndcY   = -((event.clientY - rect.top)  / rect.height) * 2 + 1;
   raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+}
+
+const HIT_BONUS = { touch: 20, pen: 14, mouse: 6 };
+
+function intersectStrokes(event) {
+  const bonus   = HIT_BONUS[event?.pointerType] ?? HIT_BONUS.mouse;
+  const targets = strokes.map(s => s.lineRef).filter(Boolean);
+  targets.forEach(ref => {
+    ref.material._savedLW  = ref.material.linewidth;
+    ref.material.linewidth = ref.material._savedLW + bonus;
+  });
+  const hits = raycaster.intersectObjects(targets);
+  targets.forEach(ref => {
+    ref.material.linewidth = ref.material._savedLW;
+    delete ref.material._savedLW;
+  });
+  return hits;
 }
 
 function pushHistory(entry) {
