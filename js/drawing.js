@@ -692,6 +692,14 @@ function handleGroupDrag(e) {
     });
     regenerateStrokeGeometry(s);
   });
+
+  // Propagate endpoint links to strokes outside the selection
+  const groupIds = new Set(selectedStrokeIds);
+  selectedStrokeIds.forEach(id => {
+    const s = strokes.find(st => st.id === id);
+    if (!s) return;
+    s.points.forEach((pt, i) => propagateEndpointLinks(s, i, pt, new Set(groupIds)));
+  });
 }
 
 // ─── Dim tool helpers ─────────────────────────────────────────────────────────
@@ -1149,6 +1157,7 @@ function commitLine(p1, p2, plane, startSnap, endSnap) {
     selected:         false,
     points:           controlPoints,
     snapConnections:  [],
+    endpointLinks:    [],
     threeObject:      strokeGroup,
     lineRef:          lineObj,
     handleGroupRef:   handleGroup,
@@ -1252,6 +1261,7 @@ function commitRect(p1, p2, plane) {
     selected:        false,
     points:          controlPoints,
     snapConnections: [],
+    endpointLinks:   [],
     threeObject:     strokeGroup,
     lineRef:         lineObj,
     handleGroupRef:  handleGroup,
@@ -1286,6 +1296,7 @@ function commitCircle(centerPt, rimPt, plane) {
     selected:        false,
     points:          controlPoints,
     snapConnections: [],
+    endpointLinks:   [],
     threeObject:     strokeGroup,
     lineRef:         lineObj,
     handleGroupRef:  handleGroup,
@@ -1326,6 +1337,7 @@ function commitFreehand(rawPoints, plane, startSnap, endSnap) {
     selected:         false,
     points:           controlPoints,
     snapConnections:  [],
+    endpointLinks:    [],
     threeObject:      strokeGroup,
     lineRef:          lineObj,
     handleGroupRef:   handleGroup,
@@ -1365,7 +1377,9 @@ function deleteStroke(strokeId) {
 
   stroke.snapConnections.forEach(otherId => {
     const other = strokes.find(s => s.id === otherId);
-    if (other) other.snapConnections = other.snapConnections.filter(id => id !== stroke.id);
+    if (!other) return;
+    other.snapConnections = other.snapConnections.filter(id => id !== stroke.id);
+    other.endpointLinks   = (other.endpointLinks || []).filter(l => l.targetId !== stroke.id);
   });
 
   strokes.splice(idx, 1);
@@ -1376,14 +1390,45 @@ function deleteStroke(strokeId) {
 
 // ─── Snap connections ─────────────────────────────────────────────────────────
 function _applySnapConnections(newStroke, startSnap, endSnap) {
-  for (const snap of [startSnap, endSnap]) {
+  const snaps = [
+    { snap: startSnap, myIndex: 0 },
+    { snap: endSnap,   myIndex: newStroke.points.length - 1 },
+  ];
+  for (const { snap, myIndex } of snaps) {
     if (!snap) continue;
     const target = strokes.find(s => s.id === snap.strokeId);
     if (!target) continue;
+
     if (!newStroke.snapConnections.includes(snap.strokeId))
       newStroke.snapConnections.push(snap.strokeId);
     if (!target.snapConnections.includes(newStroke.id))
       target.snapConnections.push(newStroke.id);
+
+    // Build typed endpoint link only when snap matched an actual endpoint (not mid-line)
+    if (snap.pointIndex !== undefined) {
+      const theirIndex = snap.pointIndex;
+      if (!newStroke.endpointLinks.some(l => l.targetId === snap.strokeId && l.myIndex === myIndex))
+        newStroke.endpointLinks.push({ targetId: snap.strokeId, myIndex, theirIndex });
+      if (!target.endpointLinks.some(l => l.targetId === newStroke.id && l.myIndex === theirIndex))
+        target.endpointLinks.push({ targetId: newStroke.id, myIndex: theirIndex, theirIndex: myIndex });
+    }
+  }
+}
+
+function propagateEndpointLinks(stroke, movedIndex, newPos, visited = new Set()) {
+  if (visited.has(stroke.id)) return;
+  visited.add(stroke.id);
+
+  for (const link of (stroke.endpointLinks || [])) {
+    if (link.myIndex !== movedIndex) continue;
+    const target = strokes.find(s => s.id === link.targetId);
+    if (!target) continue;
+
+    target.points[link.theirIndex] = { ...newPos };
+    const hMesh = target.handleGroupRef?.children[link.theirIndex];
+    if (hMesh) hMesh.position.set(newPos.x, newPos.y, newPos.z);
+    regenerateStrokeGeometry(target);
+    propagateEndpointLinks(target, link.theirIndex, newPos, visited);
   }
 }
 
@@ -1470,12 +1515,14 @@ function handleGizmoDrag(e) {
   if (ppz && document.activeElement !== ppz) ppz.value = newPos.z.toFixed(2);
 
   // Translate all strokes on this plane so they co-move
+  const planeStrokeIds = new Set(strokes.filter(s => s.planeId === plane.id).map(s => s.id));
   strokes.filter(s => s.planeId === plane.id).forEach(stroke => {
     stroke.points.forEach(pt => { pt.x += dp.x; pt.y += dp.y; pt.z += dp.z; });
     stroke.handleGroupRef?.children.forEach(h => {
       h.position.x += dp.x; h.position.y += dp.y; h.position.z += dp.z;
     });
     regenerateStrokeGeometry(stroke);
+    stroke.points.forEach((pt, i) => propagateEndpointLinks(stroke, i, pt, new Set(planeStrokeIds)));
   });
 
 }
@@ -1555,11 +1602,13 @@ function handleSelectDrag(e) {
     const ro = dragState.rimOffset;
     stroke.points[1] = { x: pt.x + ro.x, y: pt.y + ro.y, z: pt.z + ro.z };
     stroke.handleGroupRef.children[1]?.position.set(stroke.points[1].x, stroke.points[1].y, stroke.points[1].z);
+    propagateEndpointLinks(stroke, 1, stroke.points[1]);
   }
 
   stroke.points[pointIndex] = { x: pt.x, y: pt.y, z: pt.z };
   handleMesh.position.set(pt.x, pt.y, pt.z);
   regenerateStrokeGeometry(stroke);
+  propagateEndpointLinks(stroke, pointIndex, stroke.points[pointIndex]);
 }
 
 function handleSelectPointerUp(e) {
@@ -1864,10 +1913,12 @@ export function undoLast() {
       mesh.material.dispose();
     });
 
-    // Remove this stroke from others' snapConnections
+    // Remove this stroke from others' snapConnections / endpointLinks
     stroke.snapConnections.forEach(otherId => {
       const other = strokes.find(s => s.id === otherId);
-      if (other) other.snapConnections = other.snapConnections.filter(id => id !== stroke.id);
+      if (!other) return;
+      other.snapConnections = other.snapConnections.filter(id => id !== stroke.id);
+      other.endpointLinks   = (other.endpointLinks || []).filter(l => l.targetId !== stroke.id);
     });
 
     strokes.splice(idx, 1);
@@ -1885,6 +1936,7 @@ export function undoLast() {
     }
 
     regenerateStrokeGeometry(stroke);
+    propagateEndpointLinks(stroke, entry.pointIndex, entry.oldPoint);
     saveCb?.();
 
   } else if (entry.action === 'edit_line_endpoints') {
@@ -1911,6 +1963,7 @@ export function undoLast() {
     saveCb?.();
 
   } else if (entry.action === 'move_group') {
+    const undoGroupIds = new Set(entry.entries.map(e => e.strokeId));
     entry.entries.forEach(({ strokeId, oldPoints }) => {
       const stroke = strokes.find(s => s.id === strokeId);
       if (!stroke) return;
@@ -1919,6 +1972,11 @@ export function undoLast() {
         stroke.handleGroupRef.children[i]?.position.set(pt.x, pt.y, pt.z);
       });
       regenerateStrokeGeometry(stroke);
+    });
+    entry.entries.forEach(({ strokeId, oldPoints }) => {
+      const stroke = strokes.find(s => s.id === strokeId);
+      if (!stroke) return;
+      oldPoints.forEach((pt, i) => propagateEndpointLinks(stroke, i, pt, new Set(undoGroupIds)));
     });
     saveCb?.();
   }
@@ -2036,6 +2094,7 @@ export function restoreStroke(strokeData) {
     selected:         false,
     points:           strokeData.points.map(p => ({ ...p })),
     snapConnections:  [...(strokeData.snapConnections || [])],
+    endpointLinks:    [...(strokeData.endpointLinks   || [])],
     threeObject:      strokeGroup,
     lineRef:          lineObj,
     handleGroupRef:   handleGroup,
