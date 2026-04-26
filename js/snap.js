@@ -26,13 +26,13 @@ export function findEndpointSnap(sx, sy, strokes, radiusPx, camera, renderer) {
     const pts = stroke.points;
     if (!pts.length) continue;
 
-    for (const pt of [pts[0], pts[pts.length - 1]]) {
+    for (const [idx, pt] of [[0, pts[0]], [pts.length - 1, pts[pts.length - 1]]]) {
       const s = _toScreen(pt, camera, rect, cw, ch);
       if (!s) continue;
       const d = Math.hypot(sx - s.px, sy - s.py);
       if (d < closestDist) {
         closestDist = d;
-        closest = { point: { ...pt }, strokeId: stroke.id };
+        closest = { point: { ...pt }, strokeId: stroke.id, pointIndex: idx };
       }
     }
   }
