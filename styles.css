@@ -684,8 +684,42 @@ html, body {
   gap: 6px;
 }
 
-#coord-row-dim      { display: none; }
-#coord-row-dim-rect { display: none; }
+#coord-row-dim           { display: none; }
+#coord-row-dim-rect      { display: none; }
+#coord-row-extrude       { display: none; }
+#coord-row-extrude-bevel { display: none; }
+#extrude-commit-btn      { display: none; }
+#extrude-btn             { display: none; }
+
+#extrude-btn.visible {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(79, 195, 247, 0.12);
+  border: 1px solid rgba(79, 195, 247, 0.4);
+  color: rgba(79, 195, 247, 0.95);
+}
+#extrude-btn.visible:hover { background: rgba(79, 195, 247, 0.25); }
+
+#extrude-commit-btn {
+  align-self: flex-end;
+  background: rgba(79, 195, 247, 0.18);
+  border: 1px solid rgba(79, 195, 247, 0.45);
+  border-radius: 4px;
+  color: rgba(79, 195, 247, 0.95);
+  font-size: 13px;
+  padding: 3px 10px;
+  cursor: pointer;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+#extrude-commit-btn:hover { background: rgba(79, 195, 247, 0.32); }
+
+#coord-row-extrude-bevel input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-blue);
+  cursor: pointer;
+}
 
 .coord-row-label {
   font-size: 10px;

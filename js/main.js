@@ -10,6 +10,7 @@ import {
 import {
   initDrawing, setActiveTool, undoLast,
   setPlaneStrokesVisible, getStrokes, restoreStroke,
+  getSolids, restoreSolid, clearAllSolids,
   setSnapEnabled, isSnapEnabled,
   setLineWidth, getLineWidth,
   deleteStrokesByPlane, moveStrokesToNewPlanePosition,
@@ -48,7 +49,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // 4. Save callback — called after every mutation
   const bookmarks = saved?.bookmarks ? [...saved.bookmarks] : [];
-  const saveCb = () => save(getAllPlanes(), getStrokes(), bookmarks);
+  const saveCb = () => save(getAllPlanes(), getStrokes(), getSolids(), bookmarks);
 
   // 5. Drawing system
   initDrawing(scene, getCamera(), getRenderer(), getActivePlane, saveCb);
@@ -63,7 +64,12 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 7. UI: toolbar, panel, plane list
+  // 7. Restore saved solids
+  if (saved?.solids?.length) {
+    saved.solids.forEach(solidData => restoreSolid(solidData));
+  }
+
+  // 8. UI: toolbar, panel, plane list
   initUI(
     {
       getAllPlanes,
@@ -253,7 +259,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   document.getElementById('export-json-btn')?.addEventListener('click', () => {
-    downloadFile(exportJSON(getAllPlanes(), getStrokes(), bookmarks), 'sketch.json', 'application/json');
+    downloadFile(exportJSON(getAllPlanes(), getStrokes(), getSolids(), bookmarks), 'sketch.json', 'application/json');
   });
 
   document.getElementById('export-svg-btn')?.addEventListener('click', () => {
@@ -276,13 +282,13 @@ window.addEventListener('DOMContentLoaded', () => {
       try {
         const data = importJSON(ev.target.result);
         // Clear existing state
-        getAllPlanes().forEach(p => {
-          deleteStrokesByPlane(p.id);
-        });
+        getAllPlanes().forEach(p => { deleteStrokesByPlane(p.id); });
+        clearAllSolids();
         clearAllPlanes();
         // Restore from imported data
         data.planes.forEach(p => restorePlane(p));
         data.strokes.forEach(s => restoreStroke(s));
+        (data.solids || []).forEach(s => restoreSolid(s));
         // Restore bookmarks
         bookmarks.splice(0, bookmarks.length, ...(data.bookmarks || []));
         renderBookmarkList();

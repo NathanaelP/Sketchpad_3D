@@ -10,6 +10,15 @@ export function initViewport(canvasElement) {
   scene.background = new THREE.Color(0x1a1a2e);
   scene.fog = new THREE.FogExp2(0x1a1a2e, 0.025);
 
+  // Lighting — required for extruded solid shading
+  scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 0.85);
+  keyLight.position.set(5, 10, 8);
+  scene.add(keyLight);
+  const fillLight = new THREE.DirectionalLight(0x99aaff, 0.25);
+  fillLight.position.set(-5, -3, -6);
+  scene.add(fillLight);
+
   // Camera
   const w = canvasElement.clientWidth;
   const h = canvasElement.clientHeight;
