@@ -61,7 +61,9 @@ export function setActiveToolUI(tool) {
 
 function setupToolButtons() {
   document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    // pointerdown fires immediately on touch — no 300ms delay, no floating-menu miss
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); // prevent ghost click after touch
       const tool = btn.dataset.tool;
       if (!tool) return;
       activateToolUI(tool);
@@ -75,21 +77,34 @@ function setupToolButtons() {
 
 function closeShapeDropdown() {
   document.getElementById('shape-dropdown-menu')?.classList.remove('open');
+  const ov = document.getElementById('dropdown-overlay');
+  if (ov) ov.style.display = 'none';
 }
 
 function setupShapeDropdown() {
   const trigger = document.getElementById('shape-dropdown-btn');
   const menu    = document.getElementById('shape-dropdown-menu');
+  const overlay = document.getElementById('dropdown-overlay');
   if (!trigger || !menu) return;
 
-  trigger.addEventListener('click', (e) => {
+  trigger.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
     e.stopPropagation();
-    menu.classList.toggle('open');
+    if (menu.classList.contains('open')) {
+      closeShapeDropdown();
+    } else {
+      menu.classList.add('open');
+      if (overlay) overlay.style.display = 'block';
+    }
   });
 
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('#shape-dropdown')) closeShapeDropdown();
-  });
+  // Overlay tap = dismiss without selecting a tool
+  if (overlay) {
+    overlay.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      closeShapeDropdown();
+    });
+  }
 }
 
 // ─── Undo button ──────────────────────────────────────────────────────────────
