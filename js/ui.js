@@ -17,6 +17,7 @@ export function initUI(planes, onToolChange, onUndo, onLinesVisibilityToggle, on
   onDeletePlaneCb        = onDeletePlane || null;
 
   setupToolButtons();
+  setupShapeDropdown();
   setupUndoButton();
   setupPanelToggle();
   setupAddPlane();
@@ -32,16 +33,62 @@ export function initUI(planes, onToolChange, onUndo, onLinesVisibilityToggle, on
 
 // ─── Tool buttons ─────────────────────────────────────────────────────────────
 
+const SHAPE_TOOLS = new Set(['line', 'rect', 'circle']);
+
+function activateToolUI(tool) {
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.remove('active'));
+  const dropdownTrigger = document.getElementById('shape-dropdown-btn');
+
+  const btn = document.querySelector(`.tool-btn[data-tool="${tool}"]`);
+  if (btn) btn.classList.add('active');
+
+  if (SHAPE_TOOLS.has(tool)) {
+    if (dropdownTrigger) {
+      dropdownTrigger.classList.add('active');
+      dropdownTrigger.textContent = tool.charAt(0).toUpperCase() + tool.slice(1) + ' ▾';
+    }
+  } else {
+    if (dropdownTrigger) dropdownTrigger.classList.remove('active');
+  }
+
+  const label = document.getElementById('active-tool-label');
+  if (label) label.textContent = tool.charAt(0).toUpperCase() + tool.slice(1);
+}
+
+export function setActiveToolUI(tool) {
+  activateToolUI(tool);
+}
+
 function setupToolButtons() {
-  document.querySelectorAll('.tool-btn').forEach(btn => {
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
     btn.addEventListener('click', () => {
       const tool = btn.dataset.tool;
-      document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const label = document.getElementById('active-tool-label');
-      if (label) label.textContent = tool.charAt(0).toUpperCase() + tool.slice(1);
+      if (!tool) return;
+      activateToolUI(tool);
+      closeShapeDropdown();
       if (onToolChangeCb) onToolChangeCb(tool);
     });
+  });
+}
+
+// ─── Shape dropdown ───────────────────────────────────────────────────────────
+
+function closeShapeDropdown() {
+  document.getElementById('shape-dropdown-menu')?.classList.remove('open');
+}
+
+function setupShapeDropdown() {
+  const trigger = document.getElementById('shape-dropdown-btn');
+  const menu    = document.getElementById('shape-dropdown-menu');
+  if (!trigger || !menu) return;
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.classList.toggle('open');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#shape-dropdown')) closeShapeDropdown();
   });
 }
 

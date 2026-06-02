@@ -35,18 +35,23 @@
         <div class="tool-group">
           <button class="tool-btn" data-tool="orbit" title="Orbit / pan camera">Orbit</button>
           <button class="tool-btn" data-tool="select">Select</button>
-          <button class="tool-btn active" data-tool="line">Line</button>
+          <div class="shape-dropdown" id="shape-dropdown">
+            <button class="tool-btn shape-dropdown-btn" id="shape-dropdown-btn" title="Line / Rect / Circle">Line ▾</button>
+            <div class="shape-dropdown-menu" id="shape-dropdown-menu">
+              <button class="tool-btn" data-tool="line">Line</button>
+              <button class="tool-btn" data-tool="rect">Rect</button>
+              <button class="tool-btn" data-tool="circle">Circle</button>
+            </div>
+          </div>
           <button class="tool-btn" data-tool="freehand">Free</button>
           <button class="tool-btn" data-tool="erase">Erase</button>
-          <button class="tool-btn" data-tool="rect"   title="Draw rectangle">Rect</button>
-          <button class="tool-btn" data-tool="circle" title="Draw circle">Circle</button>
           <button class="tool-btn" data-tool="annotate" title="Place dimension annotation">Dim</button>
+          <button id="extrude-btn" title="Extrude selected closed shape into a 3D solid">Extrude</button>
         </div>
       </div>
       <div class="toolbar-right">
         <button id="snap-btn" class="snap-btn active" title="Toggle snapping">&#x1F9F2;</button>
         <button id="duplicate-btn" title="Duplicate selected stroke (Ctrl+D)">Dup</button>
-        <button id="extrude-btn" title="Extrude selected closed shape into a 3D solid">Extrude</button>
         <button id="undo-btn" title="Undo (Ctrl+Z)">&#x21A9;</button>
         <button id="menu-btn" title="Toggle panel">&#9776;</button>
       </div>

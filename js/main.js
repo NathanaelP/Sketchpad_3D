@@ -18,7 +18,7 @@ import {
   setStrokeSelectCallback, setSelectedStrokeColor, clearSelectedStrokeColor,
   selectAllStrokes, deleteSelectedStrokes,
 } from './drawing.js';
-import { initUI, updatePlaneList } from './ui.js';
+import { initUI, updatePlaneList, setActiveToolUI } from './ui.js';
 import { save, load, exportJSON, importJSON } from './storage.js';
 import { exportSVG } from './svg-export.js';
 import { initViewGizmo } from './view-gizmo.js';
@@ -108,7 +108,7 @@ window.addEventListener('DOMContentLoaded', () => {
         saveCb();
       },
     },
-    (tool) => setActiveTool(tool),
+    (tool) => { setActiveTool(tool); setActiveToolUI(tool); },
     () => undoLast(),
     (planeId, visible) => {
       setPlaneStrokesVisible(planeId, visible);
@@ -122,6 +122,9 @@ window.addEventListener('DOMContentLoaded', () => {
       saveCb();
     }
   );
+
+  // Sync shape dropdown label to the initial tool (line)
+  setActiveToolUI('line');
 
   // 7b. Line width slider
   const lwSlider = document.getElementById('line-width-slider');
