@@ -90,6 +90,9 @@ html, body {
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
+  touch-action: manipulation; /* eliminates 300ms tap delay on mobile */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tool-btn:hover {
@@ -147,6 +150,15 @@ html, body {
   cursor: default;
 }
 
+/* ── Dropdown overlay (catches outside taps on mobile) ── */
+#dropdown-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99; /* below dropdown (101) but above canvas */
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* ── Shape dropdown ── */
 .shape-dropdown { position: relative; }
 
@@ -161,7 +173,7 @@ html, body {
   padding: 4px;
   flex-direction: column;
   gap: 4px;
-  z-index: 100;
+  z-index: 101; /* above overlay */
   min-width: 80px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
 }
@@ -172,6 +184,7 @@ html, body {
   width: 100%;
   text-align: left;
   justify-content: flex-start;
+  padding: 8px 14px; /* taller tap targets in the flyout */
 }
 
 #snap-btn.active {
