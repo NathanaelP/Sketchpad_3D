@@ -1605,7 +1605,16 @@ function handleSelectPointerDown(e) {
     }
   }
 
-  // 3. Nothing hit — start lasso rect
+  // 3. Try solid meshes
+  if (solids.length > 0) {
+    const solidHits = raycaster.intersectObjects(solids.map(s => s.meshRef), false);
+    if (solidHits.length > 0) {
+      const solid = solids.find(s => s.meshRef === solidHits[0].object);
+      if (solid) { selectSolid(solid); return; }
+    }
+  }
+
+  // 4. Nothing hit — start lasso rect
   if (!(e.ctrlKey || e.metaKey)) deselectAll();
   lassoState = { startX: e.clientX, startY: e.clientY, additive: e.ctrlKey || e.metaKey, started: false };
   renderer.domElement.setPointerCapture(e.pointerId);
@@ -1749,6 +1758,9 @@ function deselectAll() {
     selectedStroke = null;
     strokeSelectCb?.(null, false);
   }
+  deselectSolid();
+  const extrudeBtn = document.getElementById('extrude-btn');
+  if (extrudeBtn) extrudeBtn.classList.remove('visible');
   dragState = null;
   selectEditOldPoints = null;
   hideCoordBar();
@@ -2135,6 +2147,9 @@ export function undoLast() {
     }
     saveCb?.();
 
+  } else if (entry.action === 'add_solid') {
+    deleteSolid(entry.solidId);
+
   } else if (entry.action === 'move_group') {
     const undoGroupIds = new Set(entry.entries.map(e => e.strokeId));
     entry.entries.forEach(({ strokeId, oldPoints }) => {
@@ -2276,6 +2291,41 @@ export function restoreStroke(strokeData) {
   handleGroup.children.forEach(mesh => { mesh.userData.strokeId = stroke.id; });
 
   strokes.push(stroke);
+}
+
+export function getSolids() {
+  return solids;
+}
+
+export function clearAllSolids() {
+  solids.forEach(s => {
+    scene.remove(s.meshRef);
+    s.meshRef.geometry.dispose();
+    s.meshRef.material.dispose();
+  });
+  solids.length = 0;
+  selectedSolidId = null;
+}
+
+export function restoreSolid(solidData) {
+  const plane = getPlaneById(solidData.planeId);
+  if (!plane) return;
+  const shape = buildShapeFromData(solidData.shapePoints, solidData.arcData);
+  const mesh  = makeSolidMesh(shape, solidData.depth, solidData.bevelEnabled, solidData.bevelSize, solidData.bevelSegments, solidData.color, plane);
+  scene.add(mesh);
+  solids.push({
+    id:             solidData.id,
+    sourceStrokeId: solidData.sourceStrokeId,
+    planeId:        solidData.planeId,
+    depth:          solidData.depth,
+    bevelEnabled:   solidData.bevelEnabled,
+    bevelSize:      solidData.bevelSize,
+    bevelSegments:  solidData.bevelSegments,
+    color:          solidData.color,
+    shapePoints:    solidData.shapePoints ?? null,
+    arcData:        solidData.arcData ?? null,
+    meshRef:        mesh,
+  });
 }
 
 export function copySelectedStroke() {

@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'sketchpad_autosave';
 
-export function save(planes, strokes, bookmarks) {
+export function save(planes, strokes, solids, bookmarks) {
   const data = {
     version: 1,
     planes: planes.map(p => ({
@@ -26,6 +26,18 @@ export function save(planes, strokes, bookmarks) {
       points:           s.points.map(pt => ({ x: pt.x, y: pt.y, z: pt.z })),
       snapConnections:  [...s.snapConnections],
     })),
+    solids: (solids || []).map(s => ({
+      id:             s.id,
+      sourceStrokeId: s.sourceStrokeId,
+      planeId:        s.planeId,
+      depth:          s.depth,
+      bevelEnabled:   s.bevelEnabled,
+      bevelSize:      s.bevelSize,
+      bevelSegments:  s.bevelSegments,
+      color:          s.color,
+      shapePoints:    s.shapePoints ?? null,
+      arcData:        s.arcData ?? null,
+    })),
     bookmarks: (bookmarks || []).map(b => ({
       id:       b.id,
       name:     b.name,
@@ -49,7 +61,7 @@ export function load() {
   }
 }
 
-export function exportJSON(planes, strokes, bookmarks) {
+export function exportJSON(planes, strokes, solids, bookmarks) {
   return JSON.stringify({
     version: 1,
     exportedAt: new Date().toISOString(),
@@ -75,6 +87,18 @@ export function exportJSON(planes, strokes, bookmarks) {
       strokeColor:     s.strokeColor ?? null,
       points:          s.points.map(pt => ({ x: pt.x, y: pt.y, z: pt.z })),
       snapConnections: [...s.snapConnections],
+    })),
+    solids: (solids || []).map(s => ({
+      id:             s.id,
+      sourceStrokeId: s.sourceStrokeId,
+      planeId:        s.planeId,
+      depth:          s.depth,
+      bevelEnabled:   s.bevelEnabled,
+      bevelSize:      s.bevelSize,
+      bevelSegments:  s.bevelSegments,
+      color:          s.color,
+      shapePoints:    s.shapePoints ?? null,
+      arcData:        s.arcData ?? null,
     })),
     bookmarks: (bookmarks || []).map(b => ({
       id:       b.id,
