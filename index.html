@@ -46,6 +46,7 @@
       <div class="toolbar-right">
         <button id="snap-btn" class="snap-btn active" title="Toggle snapping">&#x1F9F2;</button>
         <button id="duplicate-btn" title="Duplicate selected stroke (Ctrl+D)">Dup</button>
+        <button id="extrude-btn" title="Extrude selected closed shape into a 3D solid">Extrude</button>
         <button id="undo-btn" title="Undo (Ctrl+Z)">&#x21A9;</button>
         <button id="menu-btn" title="Toggle panel">&#9776;</button>
       </div>
@@ -131,6 +132,19 @@
         <span class="coord-label">H</span>
         <input type="number" id="dim-height-input" class="coord-input" step="0.1" min="0.01" />
       </div>
+      <div class="coord-row" id="coord-row-extrude">
+        <span class="coord-row-label">Depth</span>
+        <input type="number" id="extrude-depth-input" class="coord-input coord-input-wide" step="0.1" min="0.01" value="1" />
+      </div>
+      <div class="coord-row" id="coord-row-extrude-bevel">
+        <span class="coord-row-label">Bevel</span>
+        <input type="checkbox" id="extrude-bevel-enabled" checked title="Enable bevel / fillet" />
+        <span class="coord-label">r</span>
+        <input type="number" id="extrude-bevel-size" class="coord-input" step="0.01" min="0" value="0.08" />
+        <span class="coord-label">n</span>
+        <input type="number" id="extrude-bevel-segs" class="coord-input" step="1" min="1" max="16" value="8" />
+      </div>
+      <button id="extrude-commit-btn" title="Create solid (Enter)">&#x2B06; Solid</button>
     </div>
 
     <canvas id="viewport-canvas"></canvas>

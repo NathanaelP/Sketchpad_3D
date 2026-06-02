@@ -72,6 +72,11 @@ let colorTargetId  = null; // persists after deselect so color picker can still 
 let dimSelectedStroke = null; // line stroke currently measured by Dim tool
 let dimOldPoints      = null; // snapshot before dim edit (for undo)
 
+// Solids — extruded 3D geometry derived from closed strokes
+const solids          = [];
+let selectedSolidId   = null;
+let extrudeSourceStroke = null; // stroke queued for extrusion
+
 // Snap helpers — return null when snapping is disabled
 function snapEndpoint(sx, sy) {
   return snapEnabled ? findEndpointSnap(sx, sy, strokes, SNAP_RADIUS_PX, camera, renderer) : null;
@@ -104,11 +109,12 @@ export function initDrawing(sceneRef, cameraRef, rendererRef, getActivePlane, sa
       cancelFreehand();
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') undoLast();
-    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedStrokeIds.size > 0) {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedStrokeIds.size > 0 || selectedSolidId)) {
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       e.preventDefault();
-      deleteSelectedStrokes();
+      if (selectedSolidId) deleteSolid(selectedSolidId);
+      else deleteSelectedStrokes();
     }
   });
 
@@ -268,6 +274,7 @@ function showCoordBarForSecond(_startWorldPt, _plane) {
 }
 
 function hideCoordBar() {
+  if (extrudeSourceStroke) return; // extrude panel owns the bar
   const bar = document.getElementById('coord-bar');
   if (bar) bar.style.display = 'none';
 }
@@ -577,6 +584,24 @@ function initCoordBar() {
   // Prevent canvas pointer events while interacting with the bar
   const bar = document.getElementById('coord-bar');
   if (bar) bar.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+  // Extrude panel
+  document.getElementById('extrude-btn')?.addEventListener('click', () => {
+    if (selectedStroke && isExtrudableStroke(selectedStroke)) showExtrudePanel(selectedStroke);
+  });
+  document.getElementById('extrude-commit-btn')?.addEventListener('click', () => commitExtrude());
+  document.getElementById('extrude-depth-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); commitExtrude(); }
+    if (e.key === 'Escape') { e.preventDefault(); hideExtrudePanel(); }
+  });
+  document.getElementById('extrude-bevel-size')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); commitExtrude(); }
+    if (e.key === 'Escape') { e.preventDefault(); hideExtrudePanel(); }
+  });
+  document.getElementById('extrude-bevel-segs')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); commitExtrude(); }
+    if (e.key === 'Escape') { e.preventDefault(); hideExtrudePanel(); }
+  });
 }
 
 // ─── Multi-select helpers ─────────────────────────────────────────────────────
@@ -1676,6 +1701,8 @@ function selectStroke(stroke) {
   }
   colorTargetId = stroke.id;
   strokeSelectCb?.(stroke.strokeColor || stroke.color, !!stroke.strokeColor);
+  const extrudeBtn = document.getElementById('extrude-btn');
+  if (extrudeBtn) extrudeBtn.classList.toggle('visible', isExtrudableStroke(stroke));
 }
 
 function addToSelection(stroke) {
@@ -1742,7 +1769,153 @@ function buildLineObject(controlPoints, color, noSmooth = false) {
   return new Line2(geo, mat);
 }
 
-// Compute 65 world-space points along a circle (closed loop) from center + rim point
+// ─── Solid (extrude) helpers ──────────────────────────────────────────────────
+
+function isExtrudableStroke(stroke) {
+  if (stroke.type === 'rect' || stroke.type === 'circle') return true;
+  if (stroke.type === 'freehand' && stroke.points.length >= 3) {
+    const p0 = stroke.points[0];
+    const pn = stroke.points[stroke.points.length - 1];
+    const d2 = (p0.x - pn.x) ** 2 + (p0.y - pn.y) ** 2 + (p0.z - pn.z) ** 2;
+    return d2 < 0.02; // within ~0.14 world units = closed loop
+  }
+  return false;
+}
+
+function buildShapeFromStroke(stroke, plane) {
+  if (stroke.type === 'circle') {
+    const c2d    = worldToPlaneLocal(stroke.points[0], plane);
+    const r2d    = worldToPlaneLocal(stroke.points[1], plane);
+    const radius = Math.hypot(r2d.x - c2d.x, r2d.y - c2d.y);
+    const shape  = new THREE.Shape();
+    shape.absarc(c2d.x, c2d.y, radius, 0, Math.PI * 2, false);
+    return { shape, shapePoints: null, arcData: { cx: c2d.x, cy: c2d.y, r: radius } };
+  }
+  let pts2d;
+  if (stroke.type === 'rect') {
+    pts2d = stroke.points.map(p => worldToPlaneLocal(p, plane));
+  } else {
+    pts2d = catmullRomCurve(stroke.points, 24).map(p => worldToPlaneLocal(p, plane));
+  }
+  const shape = new THREE.Shape();
+  shape.moveTo(pts2d[0].x, pts2d[0].y);
+  for (let i = 1; i < pts2d.length; i++) shape.lineTo(pts2d[i].x, pts2d[i].y);
+  shape.closePath();
+  return { shape, shapePoints: pts2d.map(p => ({ x: p.x, y: p.y })), arcData: null };
+}
+
+function buildShapeFromData(shapePoints, arcData) {
+  if (arcData) {
+    const s = new THREE.Shape();
+    s.absarc(arcData.cx, arcData.cy, arcData.r, 0, Math.PI * 2, false);
+    return s;
+  }
+  const s = new THREE.Shape();
+  s.moveTo(shapePoints[0].x, shapePoints[0].y);
+  for (let i = 1; i < shapePoints.length; i++) s.lineTo(shapePoints[i].x, shapePoints[i].y);
+  s.closePath();
+  return s;
+}
+
+function makeSolidMesh(shape, depth, bevelEnabled, bevelSize, bevelSegments, color, plane) {
+  const bevelThickness = bevelSize;
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled,
+    bevelSegments: bevelEnabled ? bevelSegments : 0,
+    bevelSize:     bevelEnabled ? bevelSize     : 0,
+    bevelThickness: bevelEnabled ? bevelThickness : 0,
+  });
+  const mat = new THREE.MeshStandardMaterial({
+    color:     new THREE.Color(color),
+    roughness: 0.65,
+    metalness: 0.05,
+    side:      THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  plane.threeObject.getWorldPosition(mesh.position);
+  plane.threeObject.getWorldQuaternion(mesh.quaternion);
+  return mesh;
+}
+
+function selectSolid(solid) {
+  deselectAll();
+  if (selectedSolidId) {
+    const prev = solids.find(s => s.id === selectedSolidId);
+    if (prev) { prev.meshRef.material.emissive.set(0x000000); prev.meshRef.material.emissiveIntensity = 0; }
+  }
+  selectedSolidId = solid.id;
+  solid.meshRef.material.emissive.set(0x4488bb);
+  solid.meshRef.material.emissiveIntensity = 0.45;
+}
+
+function deselectSolid() {
+  if (!selectedSolidId) return;
+  const solid = solids.find(s => s.id === selectedSolidId);
+  if (solid) { solid.meshRef.material.emissive.set(0x000000); solid.meshRef.material.emissiveIntensity = 0; }
+  selectedSolidId = null;
+}
+
+function showExtrudePanel(stroke) {
+  extrudeSourceStroke = stroke;
+  const bar = document.getElementById('coord-bar');
+  if (bar) bar.style.display = 'flex';
+  const ids = ['coord-row-extrude', 'coord-row-extrude-bevel', 'extrude-commit-btn'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'flex'; });
+  document.getElementById('extrude-depth-input')?.focus();
+}
+
+function hideExtrudePanel() {
+  extrudeSourceStroke = null;
+  const ids = ['coord-row-extrude', 'coord-row-extrude-bevel', 'extrude-commit-btn'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  const bar = document.getElementById('coord-bar');
+  if (bar) bar.style.display = 'none';
+}
+
+function commitExtrude() {
+  const stroke = extrudeSourceStroke;
+  if (!stroke) return;
+  const plane = getPlaneById(stroke.planeId) || getActivePlaneFn();
+  if (!plane) return;
+
+  const depth         = Math.max(0.01, parseFloat(document.getElementById('extrude-depth-input')?.value) || 1);
+  const bevelEnabled  = document.getElementById('extrude-bevel-enabled')?.checked ?? true;
+  const bevelSize     = Math.max(0, parseFloat(document.getElementById('extrude-bevel-size')?.value)  || 0.08);
+  const bevelSegments = Math.max(1, parseInt(document.getElementById('extrude-bevel-segs')?.value, 10) || 8);
+
+  const { shape, shapePoints, arcData } = buildShapeFromStroke(stroke, plane);
+  const color = stroke.strokeColor ?? stroke.color;
+  const mesh  = makeSolidMesh(shape, depth, bevelEnabled, bevelSize, bevelSegments, color, plane);
+  scene.add(mesh);
+
+  const solid = {
+    id:             `solid_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    sourceStrokeId: stroke.id,
+    planeId:        plane.id,
+    depth, bevelEnabled, bevelSegments, bevelSize, color,
+    shapePoints:    shapePoints ?? null,
+    arcData:        arcData ?? null,
+    meshRef:        mesh,
+  };
+  solids.push(solid);
+  pushHistory({ action: 'add_solid', solidId: solid.id });
+  hideExtrudePanel();
+  saveCb?.();
+}
+
+function deleteSolid(solidId) {
+  const idx = solids.findIndex(s => s.id === solidId);
+  if (idx === -1) return;
+  const solid = solids[idx];
+  if (selectedSolidId === solidId) selectedSolidId = null;
+  scene.remove(solid.meshRef);
+  solid.meshRef.geometry.dispose();
+  solid.meshRef.material.dispose();
+  solids.splice(idx, 1);
+  history.splice(0, history.length, ...history.filter(e => e.solidId !== solidId));
+  saveCb?.();
+}
 function computeCircleGeometry(centerPt, rimPt, plane) {
   const c      = worldToPlaneLocal(centerPt, plane);
   const r      = worldToPlaneLocal(rimPt, plane);
