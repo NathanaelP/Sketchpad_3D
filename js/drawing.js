@@ -1588,7 +1588,17 @@ function handleSelectPointerDown(e) {
     }
   }
 
-  // 2. Try line geometries (Line2 uses pixel-space threshold based on linewidth)
+  // 2. Try solid meshes before strokes — solid sits on top of its source stroke,
+  //    so checking solids first prevents the buried Line2 from stealing the click.
+  if (solids.length > 0) {
+    const solidHits = raycaster.intersectObjects(solids.map(s => s.meshRef), false);
+    if (solidHits.length > 0) {
+      const solid = solids.find(s => s.meshRef === solidHits[0].object);
+      if (solid) { selectSolid(solid); return; }
+    }
+  }
+
+  // 3. Try line geometries (Line2 uses pixel-space threshold based on linewidth)
   const lineHits = intersectStrokes(e);
   if (lineHits.length > 0) {
     const stroke = strokes.find(s => s.lineRef === lineHits[0].object);
@@ -1602,15 +1612,6 @@ function handleSelectPointerDown(e) {
         selectStroke(stroke);
       }
       return;
-    }
-  }
-
-  // 3. Try solid meshes
-  if (solids.length > 0) {
-    const solidHits = raycaster.intersectObjects(solids.map(s => s.meshRef), false);
-    if (solidHits.length > 0) {
-      const solid = solids.find(s => s.meshRef === solidHits[0].object);
-      if (solid) { selectSolid(solid); return; }
     }
   }
 
@@ -1851,11 +1852,7 @@ function makeSolidMesh(shape, depth, bevelEnabled, bevelSize, bevelSegments, col
 }
 
 function selectSolid(solid) {
-  deselectAll();
-  if (selectedSolidId) {
-    const prev = solids.find(s => s.id === selectedSolidId);
-    if (prev) { prev.meshRef.material.emissive.set(0x000000); prev.meshRef.material.emissiveIntensity = 0; }
-  }
+  deselectAll(); // also calls deselectSolid, so selectedSolidId is null here
   selectedSolidId = solid.id;
   solid.meshRef.material.emissive.set(0x4488bb);
   solid.meshRef.material.emissiveIntensity = 0.45;

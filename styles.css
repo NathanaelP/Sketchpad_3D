@@ -147,6 +147,33 @@ html, body {
   cursor: default;
 }
 
+/* ── Shape dropdown ── */
+.shape-dropdown { position: relative; }
+
+.shape-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: #1e2230;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 4px;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 100;
+  min-width: 80px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+
+.shape-dropdown-menu.open { display: flex; }
+
+.shape-dropdown-menu .tool-btn {
+  width: 100%;
+  text-align: left;
+  justify-content: flex-start;
+}
+
 #snap-btn.active {
   border-color: var(--accent-blue);
   color: var(--accent-blue);
@@ -689,15 +716,17 @@ html, body {
 #coord-row-extrude       { display: none; }
 #coord-row-extrude-bevel { display: none; }
 #extrude-commit-btn      { display: none; }
-#extrude-btn             { display: none; }
-
-#extrude-btn.visible {
-  display: inline-flex;
-  align-items: center;
+#extrude-btn {
+  display: none;
   background: rgba(79, 195, 247, 0.12);
   border: 1px solid rgba(79, 195, 247, 0.4);
   color: rgba(79, 195, 247, 0.95);
 }
+
+#extrude-btn.visible {
+  display: inline-flex;
+}
+
 #extrude-btn.visible:hover { background: rgba(79, 195, 247, 0.25); }
 
 #extrude-commit-btn {
@@ -853,5 +882,7 @@ html, body {
   #undo-btn,
   #menu-btn,
   #snap-btn           { width: 32px; height: 32px; font-size: 16px; }
-  #duplicate-btn      { width: auto; padding: 0 8px; height: 32px; font-size: 12px; }
+  #duplicate-btn,
+  #extrude-btn        { width: auto; padding: 0 8px; height: 32px; font-size: 11px; }
+  .shape-dropdown-menu { min-width: 70px; }
 }
